@@ -1,0 +1,88 @@
+/* ══ Theme Toggle Button ══ */
+.cb-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px 5px 8px;
+  background: var(--tt-bg, rgba(0,0,0,0.06));
+  border: 1px solid var(--tt-border, rgba(0,0,0,0.12));
+  border-radius: 100px;
+  cursor: pointer;
+  transition: background 0.25s, border-color 0.25s, box-shadow 0.25s;
+  flex-shrink: 0;
+  outline: none;
+}
+
+/* Light mode defaults */
+:root[data-theme="light"] .cb-theme-toggle {
+  --tt-bg:        rgba(0,0,0,0.05);
+  --tt-border:    rgba(0,0,0,0.1);
+  --tt-icon:      #475569;
+  --tt-track:     #cbd5e1;
+  --tt-thumb:     #ffffff;
+  --tt-thumb-sh:  rgba(0,0,0,0.15);
+}
+
+:root[data-theme="dark"] .cb-theme-toggle {
+  --tt-bg:        rgba(255,255,255,0.06);
+  --tt-border:    rgba(255,255,255,0.1);
+  --tt-icon:      #94a3b8;
+  --tt-track:     #1e3a5f;
+  --tt-thumb:     #38bdf8;
+  --tt-thumb-sh:  rgba(56,189,248,0.4);
+}
+
+.cb-theme-toggle:hover {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+}
+
+:root[data-theme="dark"] .cb-theme-toggle:hover {
+  box-shadow: 0 2px 12px rgba(56,189,248,0.2);
+}
+
+/* Icons */
+.cb-tt-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tt-icon);
+  transition: color 0.25s, opacity 0.25s;
+  flex-shrink: 0;
+}
+
+.cb-tt-icon svg { display: block; }
+
+/* Sun visible in dark, hidden in light */
+.cb-tt-sun { opacity: 0.4; }
+.cb-theme-toggle.dark .cb-tt-sun { opacity: 1; color: #fbbf24; }
+
+/* Moon visible in light, hidden in dark */
+.cb-tt-moon { opacity: 1; }
+.cb-theme-toggle.dark .cb-tt-moon { opacity: 0.4; }
+
+/* Track + thumb */
+.cb-tt-track {
+  position: relative;
+  width: 32px; height: 18px;
+  background: var(--tt-track);
+  border-radius: 100px;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+
+.cb-tt-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--tt-thumb);
+  box-shadow: 0 1px 4px var(--tt-thumb-sh);
+  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1),
+              background 0.3s, box-shadow 0.3s;
+}
+
+/* Thumb moves right in dark mode */
+.cb-theme-toggle.dark .cb-tt-thumb {
+  transform: translateX(14px);
+}

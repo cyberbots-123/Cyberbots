@@ -1,0 +1,39 @@
+/* ================= RESET ================= */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* FIX: Force html and body to take the dark background,
+   so no white flash ever shows through */
+html,
+body {
+  min-height: 100%;
+  background: #0f172a;
+  color: #e0e7ff;
+  font-family: 'Poppins', 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* FIX: #root must also be dark — React mounts here and if it
+   has no background, the white html background shows through */
+#root {
+  min-height: 100vh;
+  background: #0f172a;
+}
+
+/* GLOBAL BACKGROUND on the app wrapper */
+.app-bg {
+  min-height: 100vh;
+
+  /* FIX: The radial gradient was transparent on the edges, which
+     fell through to a white body. The final solid color is now
+     explicitly #0f172a on the body AND here. */
+  background:
+    radial-gradient(circle at 20% 30%, rgba(59, 130, 246, 0.15), transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.15), transparent 40%),
+    #0f172a;
+
+  color: #e0e7ff;
+}

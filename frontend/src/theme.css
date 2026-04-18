@@ -1,0 +1,124 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap');
+
+:root {
+  --accent:        #0ea5e9;
+  --accent-light:  #38bdf8;
+  --accent-dark:   #0284c7;
+  --violet:        #8b5cf6;
+  --green:         #10b981;
+  --orange:        #f97316;
+  --pink:          #ec4899;
+  --red:           #ef4444;
+
+  --font-disp:     'Bebas Neue', sans-serif;
+  --font-body:     'Plus Jakarta Sans', sans-serif;
+  --radius-sm:     8px;
+  --radius-md:     12px;
+  --radius-lg:     16px;
+  --transition:    0.25s ease;
+
+  /* Page background */
+  --bg-page:       #07111f;
+  --bg-base:       #080e1a;
+  --bg-surf:       #0d1c2e;
+  --bg-surf2:      #0f2035;
+  --bg-surf3:      #162236;
+  --bg-overlay:    rgba(255,255,255,0.03);
+
+  /* Text */
+  --text-primary:  #eef2f8;
+  --text-secondary:#c8d8e8;
+  --text-muted:    #7a95b0;
+  --text-hint:     #3a5068;
+
+  /* Borders */
+  --border:        rgba(255,255,255,0.07);
+  --border-soft:   rgba(255,255,255,0.04);
+  --border-accent: rgba(56,189,248,0.25);
+
+  /* Navbar */
+  --nb-bg:            rgba(8,14,26,0.72);
+  --nb-bg-scroll:     rgba(8,14,26,0.96);
+  --nb-border:        rgba(255,255,255,0.05);
+  --nb-border-scroll: rgba(56,189,248,0.12);
+  --nb-text:          #eef2f8;
+  --nb-text-sub:      #9db4c8;
+  --nb-text-hint:     #3a5068;
+  --nb-surf2:         #111e30;
+  --nb-surf:          #0c1525;
+  --nb-edge:          rgba(255,255,255,0.06);
+  --nb-link-active-bg:rgba(56,189,248,0.1);
+  --nb-icon-hover:    rgba(255,255,255,0.07);
+  --nb-icon-color:    #9db4c8;
+  --nb-pd-bg:         #111e30;
+  --nb-pd-border:     rgba(255,255,255,0.08);
+  --nb-glow-line:     linear-gradient(90deg, transparent, rgba(56,189,248,0.55) 40%, rgba(0,229,255,0.4) 60%, transparent);
+
+  /* Sections */
+  --section-bg:    transparent;
+  --ghost-color:   rgba(255,255,255,0.02);
+  --noise-opacity: 0.022;
+  --particle-1:    #38bdf8;
+  --particle-2:    #a78bfa;
+  --particle-3:    #34d399;
+
+  /* Cards */
+  --card-bg:          #0d1c2e;
+  --card-bg-hover:    #0f2035;
+  --card-border:      rgba(255,255,255,0.06);
+  --card-shadow:      none;
+  --card-shadow-hover:none;
+
+  /* Inputs */
+  --input-bg:          rgba(255,255,255,0.04);
+  --input-border:      rgba(255,255,255,0.08);
+  --input-focus:       rgba(56,189,248,0.35);
+  --input-text:        #eef2f8;
+  --input-placeholder: #3a5068;
+
+  /* Sidebar */
+  --sb-bg:          #0d1526;
+  --sb-border:      rgba(255,255,255,0.07);
+  --sb-link-hover:  rgba(255,255,255,0.05);
+  --sb-link-active: rgba(56,189,248,0.1);
+
+  /* Footer */
+  --ft-bg:    #07111f;
+  --ft-text:  #eef2f8;
+  --ft-sub:   #7a95b0;
+  --ft-hint:  #3a5068;
+  --ft-edge:  rgba(255,255,255,0.06);
+  --ft-surf:  #0d1c2e;
+  --ft-surf2: #0f2035;
+
+  /* Shadows */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+}
+
+/* ── Base ── */
+html {
+  background: var(--bg-page);
+}
+
+body {
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  background: var(--bg-page);
+  min-height: 100vh;
+}
+
+.app-bg {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(56,189,248,0.06), transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(139,92,246,0.05), transparent 40%),
+    #07111f;
+  color: var(--text-primary);
+}

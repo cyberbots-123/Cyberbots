@@ -1,0 +1,43 @@
+/* ================= GLOBAL BASE STYLES ================= */
+/* index.css — loaded before everything else via main.jsx / index.js */
+@import './theme.css';
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* FIX 1: html is the outermost painted canvas.
+   Without this, scrolling past page content reveals white. */
+html {
+  background: #0f172a;
+  min-height: 100%;
+}
+
+/* FIX 2: body inherits the dark base.
+   Any transparent section will show this, never white. */
+body {
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: 'Poppins', 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* FIX 3: React mounts into #root. If this is unstyled, its
+   default white background punches through transparent children. */
+#root {
+  min-height: 100vh;
+  background: #0f172a;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
