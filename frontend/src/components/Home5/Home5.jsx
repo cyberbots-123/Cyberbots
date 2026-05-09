@@ -219,7 +219,7 @@ export default function Home5() {
                 </div>
                 <div className="h5-stat-div" />
                 <div className="h5-stat-row">
-                  <span className="h5-stat-n">200+</span>
+                  <span className="h5-stat-n">300+</span>
                   <span className="h5-stat-l">Hardware Kits</span>
                 </div>
                 <div className="h5-stat-div" />
