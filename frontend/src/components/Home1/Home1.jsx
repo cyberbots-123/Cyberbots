@@ -1,6 +1,13 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, {
+  useLayoutEffect,
+  useRef,
+  useState,
+  useCallback,
+  startTransition,
+} from "react";
 import "./Home1.css";
 import gsap from "gsap";
+import assets from "../../assets/assets";
 
 const slides = [
   {
@@ -11,7 +18,7 @@ const slides = [
     cta: "View Courses",
     stat: [{ n: "10+", l: "Years" }, { n: "100+", l: "Schools" }, { n: "1 Lakh+", l: "Graduates" }],
     accent: "#38bdf8",
-    image: "https://images.unsplash.com/photo-1593377202145-c5e97fd065f4?q=80&w=686&auto=format&fit=crop",
+    image: assets.Home1,
     imageAlt: "Advanced humanoid robot",
   },
   {
@@ -22,7 +29,7 @@ const slides = [
     cta: "Get free Lab Consultation",
     stat: [{ n: "10+", l: "Courses" }, { n: "98%", l: "Placement" }, { n: "4.9★", l: "Rating" }],
     accent: "#a78bfa",
-    image: "https://images.unsplash.com/photo-1518314916381-77a37c2a49ae?w=900&q=80&fit=crop",
+    image: assets.Home2,
     imageAlt: "Student programming a robot",
   },
   {
@@ -33,7 +40,7 @@ const slides = [
     cta: "Shop Kits",
     stat: [{ n: "300+", l: "Kit Types" }, { n: "48hr", l: "Delivery" }, { n: "ISO", l: "Certified" }],
     accent: "#34d399",
-    image: "https://images.unsplash.com/photo-1677092590812-78e7db4900d2?q=80&w=1331&auto=format&fit=crop",
+    image: assets.Home3,
     imageAlt: "Drone technology and IoT devices",
   },
 ];
@@ -41,31 +48,24 @@ const slides = [
 const DURATION = 5000;
 
 export default function Home1() {
-  const rootRef     = useRef();
-  const contentRef  = useRef();
-  const imgFrameRef = useRef();
-  const barRef      = useRef();
-  const intervalRef = useRef(null);
-  const isVisible   = useRef(true);
+  const rootRef      = useRef();
+  const contentRef   = useRef();
+  const imgFrameRef  = useRef();
+  const barTweenRef  = useRef(null); // FIX: store GSAP tween for the bar
+  const intervalRef  = useRef(null);
+  const isVisible    = useRef(true);
+  const gsapCtxRef   = useRef(null); // FIX: single persistent context ref
+
   const [idx, setIdx] = useState(0);
   const slide = slides[idx];
-
-  // ── PERFORMANCE FIX 1: Drastically reduced particle count ──
-  const pts = useMemo(() => {
-    const n = window.innerWidth < 768 ? 0 : 8;
-    return Array.from({ length: n }).map(() => ({
-      left:  `${Math.random() * 100}%`,
-      delay: `${Math.random() * 12}s`,
-      dur:   `${9 + Math.random() * 14}s`,
-      sz:    `${2 + Math.random() * 3.5}px`,
-      op:    0.07 + Math.random() * 0.2,
-    }));
-  }, []);
 
   const startTimer = useCallback(() => {
     if (intervalRef.current) return;
     intervalRef.current = setInterval(() => {
-      setIdx(p => (p + 1) % slides.length);
+      // FIX: wrap auto-slide in startTransition — it's non-urgent UI work
+      startTransition(() => {
+        setIdx(p => (p + 1) % slides.length);
+      });
     }, DURATION);
   }, []);
 
@@ -74,25 +74,29 @@ export default function Home1() {
     intervalRef.current = null;
   }, []);
 
-  useEffect(() => { startTimer(); return stopTimer; }, [startTimer, stopTimer]);
+  // Mount / unmount timer
+  useLayoutEffect(() => {
+    startTimer();
+    return stopTimer;
+  }, [startTimer, stopTimer]);
 
-  // ── PERFORMANCE FIX 2: Pause timer when tab hidden ──
-  useEffect(() => {
+  // Pause when tab hidden
+  useLayoutEffect(() => {
     const handleVisibility = () => {
-      if (document.hidden) stopTimer(); else if (isVisible.current) startTimer();
+      if (document.hidden) stopTimer();
+      else if (isVisible.current) startTimer();
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [startTimer, stopTimer]);
 
-  // ── PERFORMANCE FIX 3: IntersectionObserver to pause animations when off-screen ──
-  useEffect(() => {
+  // Pause when scrolled out of view
+  useLayoutEffect(() => {
     const el = rootRef.current;
     if (!el) return;
     const obs = new IntersectionObserver(
       ([entry]) => {
         isVisible.current = entry.isIntersecting;
-        el.style.setProperty("--play", entry.isIntersecting ? "running" : "paused");
         if (entry.isIntersecting) startTimer(); else stopTimer();
       },
       { threshold: 0.05 }
@@ -101,7 +105,10 @@ export default function Home1() {
     return () => obs.disconnect();
   }, [startTimer, stopTimer]);
 
-  useEffect(() => {
+  // FIX: useLayoutEffect instead of useEffect for GSAP
+  // Runs synchronously after DOM mutations — no single-frame flash of un-animated state
+  useLayoutEffect(() => {
+    // ── Image animations ──────────────────────────────────────
     if (imgFrameRef.current) {
       gsap.killTweensOf(imgFrameRef.current);
       gsap.fromTo(
@@ -114,11 +121,12 @@ export default function Home1() {
     const el = contentRef.current;
     if (!el) return;
 
-    gsap.killTweensOf(
-      el.querySelectorAll(".h1-tag,.h1-line,.h1-title-row,.h1-sub,.h1-body,.h1-cta,.h1-stat")
-    );
+    // FIX: revert previous context before creating a new one —
+    // ctx.revert() already kills all its tweens, so no need for
+    // the separate gsap.killTweensOf(querySelectorAll(...)) call
+    if (gsapCtxRef.current) gsapCtxRef.current.revert();
 
-    const ctx = gsap.context(() => {
+    gsapCtxRef.current = gsap.context(() => {
       const tl = gsap.timeline();
       tl.set(
         ".h1-tag,.h1-line,.h1-title-row,.h1-sub,.h1-body,.h1-cta,.h1-stat",
@@ -133,21 +141,33 @@ export default function Home1() {
         .to(".h1-stat",      { opacity: 1, y: 0, duration: 0.35, stagger: 0.08, ease: "power2.out" }, 0.6);
     }, el);
 
-    if (barRef.current) {
-      barRef.current.style.transition = "none";
-      barRef.current.style.transform  = "scaleX(0)";
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        if (barRef.current) {
-          barRef.current.style.transition = `transform ${DURATION}ms linear`;
-          barRef.current.style.transform  = "scaleX(1)";
-        }
-      }));
+    // FIX: Use a GSAP tween for the progress bar instead of the
+    // double-rAF CSS-transition-reset hack. Cleaner and jank-free.
+    if (barTweenRef.current) barTweenRef.current.kill();
+    if (contentRef.current) { // use contentRef as a guard that DOM is ready
+      const barEl = document.querySelector(".h1-bar-fill");
+      if (barEl) {
+        barTweenRef.current = gsap.fromTo(
+          barEl,
+          { scaleX: 0 },
+          { scaleX: 1, duration: DURATION / 1000, ease: "none" }
+        );
+      }
     }
 
-    return () => ctx.revert();
+    return () => {
+      if (gsapCtxRef.current) {
+        gsapCtxRef.current.revert();
+        gsapCtxRef.current = null;
+      }
+    };
   }, [idx]);
 
-  const goTo = i => { stopTimer(); setIdx(i); setTimeout(startTimer, 80); };
+  const goTo = i => {
+    stopTimer();
+    setIdx(i);
+    setTimeout(startTimer, 80);
+  };
 
   return (
     <section
@@ -158,21 +178,9 @@ export default function Home1() {
       onMouseLeave={startTimer}
     >
       <div className="h1-circuit" aria-hidden />
-
-      {/* ── PERFORMANCE FIX 1: Reduced particles, skip on mobile ── */}
-      {pts.length > 0 && (
-        <div className="h1-pts" aria-hidden>
-          {pts.map((p, i) => (
-            <span key={i} style={{
-              left: p.left, width: p.sz, height: p.sz,
-              animationDelay: p.delay, animationDuration: p.dur, opacity: p.op,
-            }} />
-          ))}
-        </div>
-      )}
-
-      <div className="h1-noise" aria-hidden />
       <div className="h1-ghost" aria-hidden>0{idx + 1}</div>
+
+
 
       <div className="h1-grid">
 
@@ -223,6 +231,7 @@ export default function Home1() {
           </div>
         </div>
 
+        {/* ── DESKTOP RIGHT PANEL ── */}
         <div className="h1-panel">
           <div className="h1-hud h1-hud-tl" aria-hidden />
           <div className="h1-hud h1-hud-tr" aria-hidden />
@@ -232,7 +241,6 @@ export default function Home1() {
           <div className="h1-img-frame" ref={imgFrameRef}>
             <img src={slide.image} alt={slide.imageAlt} className="h1-img" />
             <div className="h1-img-overlay" />
-            <div className="h1-scan" aria-hidden />
             <div className="h1-badge">
               <span className="h1-badge-dot" />
               <span className="h1-badge-text">LIVE TRAINING</span>
@@ -242,12 +250,24 @@ export default function Home1() {
               <span className="h1-img-stat-l">{slide.stat[0].l}</span>
             </div>
           </div>
+
+          <div className="h1-panel-dots">
+            {slides.map((_, i) => (
+              <button
+                key={i}
+                className={`h1-panel-dot${i === idx ? " on" : ""}`}
+                onClick={() => goTo(i)}
+                aria-label={`Go to slide ${i + 1}`}
+              />
+            ))}
+          </div>
         </div>
 
       </div>
 
+      {/* FIX: bar-fill is now driven by GSAP (no CSS transition needed) */}
       <div className="h1-bar">
-        <div ref={barRef} className="h1-bar-fill" />
+        <div className="h1-bar-fill" />
       </div>
     </section>
   );

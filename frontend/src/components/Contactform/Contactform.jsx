@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 
 /* ── Icons as tiny SVG components ── */
 const IconUser = () => (
@@ -31,11 +31,6 @@ const IconChevron = () => (
     <polyline points="6 9 12 15 18 9" />
   </svg>
 );
-const IconCheck = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
 const IconSend = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
@@ -60,9 +55,7 @@ const IconHeadphone = () => (
 const ENQUIRY_TYPES = [
   "General Enquiry",
   "Course Information",
-  "Admissions & Enrollment",
   "Pricing & Packages",
-  "School / Institutional Partnership",
   "Workshop Booking",
   "Technical Support",
   "Feedback & Suggestions",
@@ -94,7 +87,10 @@ function Field({ label, required, icon, error, children, half = false }) {
       {children}
       {error && (
         <span style={{ fontSize: 11, color: "var(--cf-error)", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10" opacity=".15"/><path d="M12 8v5M12 16h.01" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" fill="none"/></svg>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="10" opacity=".15"/>
+            <path d="M12 8v5M12 16h.01" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+          </svg>
           {error}
         </span>
       )}
@@ -277,18 +273,19 @@ export default function ContactForm() {
     organisation: "", enquiryType: "", hearAboutUs: "",
     message: "", consent: false,
   });
-  const [errors, setErrors] = useState({});
-  const [touched, setTouched] = useState({});
+  const [errors, setErrors]       = useState({});
+  const [touched, setTouched]     = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [serverData, setServerData] = useState(null); // ✅ stores API response
 
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target ? e.target.value : e }));
+  const set   = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target ? e.target.value : e }));
   const touch = (key) => () => setTouched((t) => ({ ...t, [key]: true }));
 
   const validate = (data) => {
     const e = {};
     if (!data.firstName.trim()) e.firstName = "First name is required";
-    if (!data.lastName.trim()) e.lastName = "Last name is required";
+    if (!data.lastName.trim())  e.lastName  = "Last name is required";
     if (!data.email.trim()) e.email = "Email address is required";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) e.email = "Please enter a valid email";
     if (!data.phone.trim()) e.phone = "Phone number is required";
@@ -301,18 +298,44 @@ export default function ContactForm() {
   };
 
   const handleSubmit = async () => {
+    // 1. Touch all fields to show validation UI
     const allTouched = Object.keys(form).reduce((a, k) => ({ ...a, [k]: true }), {});
     setTouched(allTouched);
+
+    // 2. Frontend validation first (fast, no network needed)
     const errs = validate(form);
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
+
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 1400));
-    setSubmitting(false);
-    setSubmitted(true);
+    try {
+      const response = await fetch("http://localhost:5000/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+
+      const json = await response.json();
+
+      if (!response.ok) {
+        // Server-side validation errors → show on form fields
+        if (json.errors) setErrors(json.errors);
+        else alert(json.message || "Something went wrong. Please try again.");
+        return;
+      }
+
+      // ✅ Success — save the server response (contains real referenceNumber)
+      setServerData(json.data);
+      setSubmitted(true);
+
+    } catch (err) {
+      alert("Network error. Please check your connection and try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  /* Live validation on touched fields */
+  /* ── Live validation on touched fields ── */
   const liveErrors = { ...errors };
   if (touched.firstName && !form.firstName.trim()) liveErrors.firstName = "First name is required";
   else delete liveErrors.firstName;
@@ -335,6 +358,19 @@ export default function ContactForm() {
     else if (form.message.trim().length < 20) liveErrors.message = "Please write at least 20 characters";
     else delete liveErrors.message;
   }
+
+  /* ── Reset handler ── */
+  const handleReset = () => {
+    setSubmitted(false);
+    setServerData(null); // ✅ clear server data on reset
+    setForm({
+      firstName: "", lastName: "", email: "", phone: "",
+      organisation: "", enquiryType: "", hearAboutUs: "",
+      message: "", consent: false,
+    });
+    setTouched({});
+    setErrors({});
+  };
 
   return (
     <>
@@ -405,14 +441,12 @@ export default function ContactForm() {
           .cf-form-section { border-radius: 20px !important; }
         }
 
-        /* Decorative orb */
         .cf-orb {
           position: absolute; border-radius: 50%;
           background: rgba(255,255,255,0.06);
           pointer-events: none;
         }
 
-        /* Submit button */
         .cf-submit {
           height: 50px; border-radius: 12px; border: none; cursor: pointer;
           background: var(--cf-accent); color: white;
@@ -432,7 +466,6 @@ export default function ContactForm() {
         .cf-submit:active:not(:disabled) { transform: translateY(0); }
         .cf-submit:disabled { opacity: 0.7; cursor: not-allowed; }
 
-        /* Spinner */
         .cf-spinner {
           width: 18px; height: 18px; border-radius: 50%;
           border: 2px solid rgba(255,255,255,0.3);
@@ -441,7 +474,6 @@ export default function ContactForm() {
         }
         @keyframes cfSpin { to { transform: rotate(360deg); } }
 
-        /* Success */
         @keyframes cfSuccessIn {
           0%  { opacity: 0; transform: scale(0.85) translateY(20px); }
           100%{ opacity: 1; transform: scale(1) translateY(0); }
@@ -457,36 +489,23 @@ export default function ContactForm() {
           animation: cfCheckDraw 0.6s ease 0.3s forwards;
         }
 
-        /* Field fade in stagger */
         @keyframes cfFieldIn {
           from { opacity: 0; transform: translateY(10px); }
           to   { opacity: 1; transform: translateY(0); }
         }
         .cf-field-0 { animation: cfFieldIn 0.35s ease 0.05s both; }
-        .cf-field-1 { animation: cfFieldIn 0.35s ease 0.1s both; }
+        .cf-field-1 { animation: cfFieldIn 0.35s ease 0.10s both; }
         .cf-field-2 { animation: cfFieldIn 0.35s ease 0.15s both; }
-        .cf-field-3 { animation: cfFieldIn 0.35s ease 0.2s both; }
+        .cf-field-3 { animation: cfFieldIn 0.35s ease 0.20s both; }
         .cf-field-4 { animation: cfFieldIn 0.35s ease 0.25s both; }
-        .cf-field-5 { animation: cfFieldIn 0.35s ease 0.3s both; }
+        .cf-field-5 { animation: cfFieldIn 0.35s ease 0.30s both; }
         .cf-field-6 { animation: cfFieldIn 0.35s ease 0.35s both; }
-        .cf-field-7 { animation: cfFieldIn 0.35s ease 0.4s both; }
+        .cf-field-7 { animation: cfFieldIn 0.35s ease 0.40s both; }
         .cf-field-8 { animation: cfFieldIn 0.35s ease 0.45s both; }
 
         input::placeholder, textarea::placeholder, select option:first-child { color: var(--cf-placeholder); }
 
-        .cf-divider-line {
-          height: 1px; background: var(--cf-divider); margin: 4px 0 20px;
-        }
-
-        .cf-progress-dot {
-          width: 7px; height: 7px; border-radius: 50%;
-          background: rgba(255,255,255,0.3);
-          transition: background 0.3s, transform 0.3s;
-        }
-        .cf-progress-dot.active {
-          background: white;
-          transform: scale(1.3);
-        }
+        .cf-divider-line { height: 1px; background: var(--cf-divider); margin: 4px 0 20px; }
       `}</style>
 
       <div className="cf-root">
@@ -499,14 +518,12 @@ export default function ContactForm() {
             display: "flex", flexDirection: "column", justifyContent: "space-between",
             position: "relative", overflow: "hidden",
           }}>
-            {/* Decorative orbs */}
             <div className="cf-orb" style={{ width: 200, height: 200, top: -60, right: -60 }} />
             <div className="cf-orb" style={{ width: 140, height: 140, bottom: 80, left: -50, background: "rgba(255,255,255,0.04)" }} />
             <div className="cf-orb" style={{ width: 80, height: 80, bottom: 200, right: 30, background: "rgba(79,142,247,0.15)" }} />
 
-            {/* Top content */}
             <div style={{ position: "relative" }}>
-              {/* Logo / Brand mark */}
+              {/* Brand */}
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "2.5rem" }}>
                 <div style={{
                   width: 38, height: 38, borderRadius: 10,
@@ -538,27 +555,13 @@ export default function ContactForm() {
 
               <div style={{ height: 1, background: "rgba(255,255,255,0.08)", marginBottom: "2rem" }} />
 
-              {/* Contact info items */}
               <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-                <ContactInfoItem
-                  icon={<IconMapPin />}
-                  label="Visit us"
-                  value="CIT Nagar, Nandanam, Chennai – 600035"
-                />
-                <ContactInfoItem
-                  icon={<IconClock />}
-                  label="Office hours"
-                  value="Mon – Sat, 9:00 AM – 6:00 PM"
-                />
-                <ContactInfoItem
-                  icon={<IconHeadphone />}
-                  label="Call us"
-                  value="+91 73580 39311"
-                />
+                <ContactInfoItem icon={<IconMapPin />} label="Visit us"       value="Door No :-71,73, CIT Nagar 1st main road, CIT Nagar, Nandhanam Chennai - 600035" />
+                <ContactInfoItem icon={<IconClock />}  label="Office hours"   value="Mon – Sat, 9:00 AM – 6:00 PM" />
+                <ContactInfoItem icon={<IconHeadphone />} label="Call us"     value="+91 73580 39311" />
               </div>
             </div>
 
-            {/* Bottom — response time badge */}
             <div style={{ position: "relative", marginTop: "2.5rem" }}>
               <div style={{
                 display: "inline-flex", alignItems: "center", gap: 8,
@@ -575,10 +578,7 @@ export default function ContactForm() {
           </div>
 
           {/* ── RIGHT FORM ── */}
-          <div className="cf-form-section" style={{
-            background: "var(--cf-card)",
-            padding: "2.5rem 2.2rem",
-          }}>
+          <div className="cf-form-section" style={{ background: "var(--cf-card)", padding: "2.5rem 2.2rem" }}>
 
             {submitted ? (
               /* ── SUCCESS STATE ── */
@@ -598,28 +598,44 @@ export default function ContactForm() {
                     <polyline className="cf-check-path" points="20 6 9 17 4 12" />
                   </svg>
                 </div>
+
                 <h3 style={{
                   fontFamily: "'Playfair Display', serif",
                   fontSize: 24, fontWeight: 600, color: "var(--cf-text)", marginBottom: 10,
                 }}>
                   Message received!
                 </h3>
+
                 <p style={{ fontSize: 14, color: "var(--cf-muted)", lineHeight: 1.7, maxWidth: 320 }}>
-                  Thank you, <strong style={{ color: "var(--cf-text)", fontWeight: 600 }}>{form.firstName}</strong>. We've received your enquiry and will respond to{" "}
-                  <span style={{ color: "var(--cf-accent)" }}>{form.email}</span> within one business day.
+                  Thank you,{" "}
+                  <strong style={{ color: "var(--cf-text)", fontWeight: 600 }}>
+                    {serverData?.firstName || form.firstName}
+                  </strong>.{" "}
+                  We've received your enquiry and will respond to{" "}
+                  <span style={{ color: "var(--cf-accent)" }}>
+                    {serverData?.email || form.email}
+                  </span>{" "}
+                  within one business day.
                 </p>
+
+                {/* ✅ Reference number now comes from the server — matches MongoDB */}
                 <div style={{
                   marginTop: "2rem", padding: "14px 20px",
                   background: "var(--cf-input-bg)",
                   border: "1px solid var(--cf-border)", borderRadius: 12,
                   fontSize: 13, color: "var(--cf-muted)",
                 }}>
-                  Reference: <span style={{ fontWeight: 600, color: "var(--cf-text)", fontFamily: "monospace", letterSpacing: "0.05em" }}>
-                    CB-{Math.floor(100000 + Math.random() * 900000)}
+                  Reference:{" "}
+                  <span style={{
+                    fontWeight: 600, color: "var(--cf-text)",
+                    fontFamily: "monospace", letterSpacing: "0.05em",
+                  }}>
+                    {serverData?.referenceNumber}
                   </span>
                 </div>
+
                 <button
-                  onClick={() => { setSubmitted(false); setForm({ firstName:"",lastName:"",email:"",phone:"",organisation:"",enquiryType:"",hearAboutUs:"",message:"",consent:false }); setTouched({}); setErrors({}); }}
+                  onClick={handleReset}
                   style={{
                     marginTop: "1.5rem", padding: "10px 24px", borderRadius: 10,
                     border: "1.5px solid var(--cf-border)", background: "transparent",
@@ -633,6 +649,7 @@ export default function ContactForm() {
                   Send another message
                 </button>
               </div>
+
             ) : (
               <>
                 {/* Form header */}
@@ -644,13 +661,6 @@ export default function ContactForm() {
                     }}>
                       General enquiry
                     </h3>
-                    <span style={{
-                      fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase",
-                      padding: "3px 10px", borderRadius: 100,
-                      background: "var(--cf-tag-bg)", color: "var(--cf-tag-text)",
-                    }}>
-                      Free
-                    </span>
                   </div>
                   <p style={{ fontSize: 13, color: "var(--cf-muted)" }}>
                     All fields marked <span style={{ color: "var(--cf-accent)", fontWeight: 600 }}>*</span> are required.
@@ -718,7 +728,11 @@ export default function ContactForm() {
                   {/* Enquiry Type */}
                   <div className="cf-field-4" style={{ gridColumn: "span 2" }}>
                     <Field label="Enquiry type" required icon={<IconBriefcase />} error={liveErrors.enquiryType}>
-                      <StyledSelect value={form.enquiryType} onChange={(e) => { set("enquiryType")(e); touch("enquiryType")(); }} hasError={!!liveErrors.enquiryType}>
+                      <StyledSelect
+                        value={form.enquiryType}
+                        onChange={(e) => { set("enquiryType")(e); touch("enquiryType")(); }}
+                        hasError={!!liveErrors.enquiryType}
+                      >
                         <option value="">Select enquiry type…</option>
                         {ENQUIRY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                       </StyledSelect>
@@ -744,9 +758,9 @@ export default function ContactForm() {
                         hasError={!!liveErrors.message}
                       />
                       <div style={{
-                        fontSize: 11, color: form.message.length < 20 && form.message.length > 0 ? "var(--cf-error)" : "var(--cf-placeholder)",
-                        textAlign: "right", marginTop: -2,
-                        transition: "color 0.2s",
+                        fontSize: 11,
+                        color: form.message.length < 20 && form.message.length > 0 ? "var(--cf-error)" : "var(--cf-placeholder)",
+                        textAlign: "right", marginTop: -2, transition: "color 0.2s",
                       }}>
                         {form.message.length} / 500
                       </div>

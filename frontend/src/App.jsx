@@ -8,6 +8,7 @@ import Home from "./pages/Home/Home";
 import Course from "./pages/Course/Course";
 import Contact from "./pages/Contact/Contact";
 import UnderConstruction from "./components/Underconstruction/Underconstruction";
+import CyberbotsAboutBlue from "./components/Cyberbotsaboutus/Cyberbotsaboutus";
 
 export default function App() {
   return (
@@ -23,7 +24,7 @@ export default function App() {
             {/* Under Construction Pages */}
             <Route path="/shop" element={<UnderConstruction />} />
             <Route path="/events" element={<UnderConstruction />} />
-            <Route path="/about" element={<UnderConstruction />} />
+            <Route path="/about" element={<CyberbotsAboutBlue />} />
             <Route path="/careers" element={<UnderConstruction />} />
             <Route path="/blog" element={<UnderConstruction />} />
 

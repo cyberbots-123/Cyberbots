@@ -89,7 +89,7 @@ const testimonials = [
 ];
 
 const partnerStats = [
-  { n: "50+",  l: "Partner Schools"     },
+  { n: "100+",  l: "Partner Schools"     },
   { n: "100+", l: "Cities Reached"      },
   { n: "5K+",  l: "Students Impacted"   },
   { n: "98%",  l: "Renewal Rate"        },
@@ -309,7 +309,7 @@ export default function Home6() {
             <div className="h6-cta-pip" />
             <div>
               <p className="h6-cta-title">Ready to bring robotics to your school?</p>
-              <p className="h6-cta-sub">Join 50+ schools already transforming their STEM curriculum with Cyberbots.</p>
+              <p className="h6-cta-sub">Join 100+ schools already transforming their STEM curriculum with Cyberbots.</p>
             </div>
           </div>
           <div className="h6-cta-right">

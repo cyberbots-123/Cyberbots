@@ -52,7 +52,7 @@ const contacts = [
         <circle cx="12" cy="10" r="3"/>
       </svg>
     ),
-    text: "No.62, Ravi Colony 1st Street,\nSt Thomas Mount, Chennai – 600016",
+    text: "Door No :-71,73, CIT Nagar 1st main road,\n CIT Nagar,Nandhanam\n Chennai - 600035",
     href: "#",
     multi: true,
   },

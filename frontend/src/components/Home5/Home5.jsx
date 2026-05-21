@@ -2,12 +2,13 @@ import React, { useEffect, useRef } from "react";
 import "./Home5.css";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import assets from "../../assets/assets";
 
 gsap.registerPlugin(ScrollTrigger);
 
 const galleryItems = [
   {
-    src: "https://images.unsplash.com/photo-1589254065878-42c9da997008?w=800&q=80&fit=crop",
+    src: assets.IndustrialRobotics,
     alt: "Industrial robot arm",
     label: "Industrial Robotics",
     sub: "Precision automation",
@@ -15,7 +16,7 @@ const galleryItems = [
     accent: "#38bdf8",
   },
   {
-    src: "https://images.unsplash.com/photo-1561557944-6e7860d1a7eb?w=600&q=80&fit=crop",
+    src: assets.DroneTechnology,
     alt: "Drone in flight",
     label: "Drone Technology",
     sub: "Aerial systems",
@@ -23,7 +24,7 @@ const galleryItems = [
     accent: "#a78bfa",
   },
   {
-    src: "https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=600&q=80&fit=crop",
+    src: assets.PCB,
     alt: "Circuit board close-up",
     label: "Electronics & PCB",
     sub: "Precision engineering",
@@ -31,7 +32,7 @@ const galleryItems = [
     accent: "#34d399",
   },
   {
-    src: "https://images.unsplash.com/photo-1518314916381-77a37c2a49ae?w=700&q=80&fit=crop",
+    src: assets.StudentsProject,
     alt: "Student with robot",
     label: "Student Projects",
     sub: "Real builds, real learning",
@@ -39,7 +40,7 @@ const galleryItems = [
     accent: "#fb923c",
   },
   {
-    src: "https://images.unsplash.com/photo-1677442135703-1787eea5ce01?w=700&q=80&fit=crop",
+    src: assets.Artificial,
     alt: "AI and machine learning",
     label: "Artificial Intelligence",
     sub: "Neural networks & ML",
@@ -109,36 +110,65 @@ export default function Home5() {
   const headRef = useRef();
 
   useEffect(() => {
-    const el = rootRef.current;
+    /*
+      Removed IntersectionObserver that toggled --play CSS variable.
+      That pattern caused style recalculations on intersection and is
+      unnecessary now that we've removed the looping background animations.
 
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        el.style.setProperty("--play", entry.isIntersecting ? "running" : "paused");
-      },
-      { threshold: 0.05 }
-    );
-    obs.observe(el);
-
+      GSAP context ensures all ScrollTriggers are scoped and properly
+      cleaned up on unmount — no memory leaks.
+    */
     const ctx = gsap.context(() => {
-      gsap.fromTo(".h5-tag",       { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.5, ease: "power2.out",   scrollTrigger: { trigger: headRef.current, start: "top 82%", once: true }});
-      gsap.fromTo(".h5-line",      { scaleX: 0 },          { scaleX: 1, duration: 0.6, ease: "power3.out",            scrollTrigger: { trigger: headRef.current, start: "top 82%", once: true }});
-      gsap.fromTo(".h5-title-row", { opacity: 0, y: 50 },  { opacity: 1, y: 0, duration: 0.65, stagger: 0.1, ease: "expo.out", scrollTrigger: { trigger: headRef.current, start: "top 80%", once: true }});
+      const defaults = { ease: "power2.out" };
+
+      gsap.fromTo(
+        ".h5-tag",
+        { opacity: 0, x: -14 },
+        { opacity: 1, x: 0, duration: 0.45, ...defaults,
+          scrollTrigger: { trigger: headRef.current, start: "top 82%", once: true } }
+      );
+
+      gsap.fromTo(
+        ".h5-line",
+        { scaleX: 0 },
+        { scaleX: 1, duration: 0.55, ease: "power3.out",
+          scrollTrigger: { trigger: headRef.current, start: "top 82%", once: true } }
+      );
+
+      gsap.fromTo(
+        ".h5-title-row",
+        { opacity: 0, y: 40 },
+        { opacity: 1, y: 0, duration: 0.6, stagger: 0.09, ease: "expo.out",
+          scrollTrigger: { trigger: headRef.current, start: "top 80%", once: true } }
+      );
+
+      /*
+        ScrollTrigger.batch is efficient for animating many elements —
+        it groups elements visible in the same frame into one tween
+        instead of creating one ScrollTrigger per element.
+      */
       ScrollTrigger.batch(".h5-gallery-item", {
-        onEnter: (batch) => gsap.to(batch, { opacity: 1, y: 0, scale: 1, duration: 0.55, stagger: 0.08, ease: "power3.out" }),
+        onEnter: (batch) =>
+          gsap.to(batch, {
+            opacity: 1, y: 0, scale: 1,
+            duration: 0.5, stagger: 0.07, ease: "power3.out",
+          }),
         start: "top 84%",
         once: true,
       });
+
       ScrollTrigger.batch(".h5-vp-card", {
-        onEnter: (batch) => gsap.to(batch, { opacity: 1, y: 0, duration: 0.6, stagger: 0.12, ease: "power3.out" }),
+        onEnter: (batch) =>
+          gsap.to(batch, {
+            opacity: 1, y: 0,
+            duration: 0.55, stagger: 0.1, ease: "power3.out",
+          }),
         start: "top 86%",
         once: true,
       });
     }, rootRef);
 
-    return () => {
-      obs.disconnect();
-      ctx.revert();
-    };
+    return () => ctx.revert();
   }, []);
 
   return (
@@ -169,7 +199,10 @@ export default function Home5() {
 
         <div className="h5-gallery">
           <div className="h5-gallery-row h5-row-1">
-            <div className="h5-gallery-item h5-item-large" style={{ "--g-accent": galleryItems[0].accent }}>
+            <div
+              className="h5-gallery-item h5-item-large"
+              style={{ "--g-accent": galleryItems[0].accent }}
+            >
               <img src={galleryItems[0].src} alt={galleryItems[0].alt} className="h5-gallery-img" />
               <div className="h5-gallery-overlay" />
               <div className="h5-gallery-scan" />
@@ -180,9 +213,14 @@ export default function Home5() {
               <div className="h5-gallery-corner h5-corner-tl" />
               <div className="h5-gallery-corner h5-corner-br" />
             </div>
+
             <div className="h5-gallery-col">
               {galleryItems.slice(1, 3).map((item, i) => (
-                <div key={i} className="h5-gallery-item h5-item-small" style={{ "--g-accent": item.accent }}>
+                <div
+                  key={i}
+                  className="h5-gallery-item h5-item-small"
+                  style={{ "--g-accent": item.accent }}
+                >
                   <img src={item.src} alt={item.alt} className="h5-gallery-img" />
                   <div className="h5-gallery-overlay" />
                   <div className="h5-gallery-info">
@@ -198,7 +236,11 @@ export default function Home5() {
 
           <div className="h5-gallery-row h5-row-2">
             {galleryItems.slice(3, 5).map((item, i) => (
-              <div key={i} className="h5-gallery-item h5-item-medium" style={{ "--g-accent": item.accent }}>
+              <div
+                key={i}
+                className="h5-gallery-item h5-item-medium"
+                style={{ "--g-accent": item.accent }}
+              >
                 <img src={item.src} alt={item.alt} className="h5-gallery-img" />
                 <div className="h5-gallery-overlay" />
                 <div className="h5-gallery-scan" />
@@ -210,9 +252,13 @@ export default function Home5() {
                 <div className="h5-gallery-corner h5-corner-br" />
               </div>
             ))}
-            <div className="h5-gallery-item h5-item-small h5-item-stat" style={{ "--g-accent": "#34d399" }}>
+
+            {/* Stat card — h5-stat-ring removed (spinning layer with no value) */}
+            <div
+              className="h5-gallery-item h5-item-small h5-item-stat"
+              style={{ "--g-accent": "#34d399" }}
+            >
               <div className="h5-stat-card">
-                <div className="h5-stat-ring" />
                 <div className="h5-stat-row">
                   <span className="h5-stat-n">10+</span>
                   <span className="h5-stat-l">Years Training</span>
@@ -236,7 +282,9 @@ export default function Home5() {
         <div className="h5-vp">
           <div className="h5-vp-eyebrow">
             <span className="h5-vp-eyebrow-pip" />
-            <span className="h5-vp-eyebrow-text">More Than a Lab — A Professional School for Future Generations</span>
+            <span className="h5-vp-eyebrow-text">
+              More Than a Lab — A Professional School for Future Generations
+            </span>
             <div className="h5-vp-eyebrow-rule" />
           </div>
 
@@ -245,26 +293,15 @@ export default function Home5() {
               <div
                 key={i}
                 className="h5-vp-card"
-                style={{
-                  "--vp-accent": vp.accent,
-                  "--vp-rgb": vp.accentRgb,
-                }}
+                style={{ "--vp-accent": vp.accent, "--vp-rgb": vp.accentRgb }}
               >
-                {/* Large ghost number watermark */}
                 <span className="h5-vp-ghost">{vp.num}</span>
-
-                {/* Scan line */}
                 <div className="h5-vp-scan" />
-
-                {/* Corner brackets */}
                 <div className="h5-vp-corner h5-vp-tl" />
                 <div className="h5-vp-corner h5-vp-br" />
 
-                {/* Top row: icon + tag + stat */}
                 <div className="h5-vp-top">
-                  <div className="h5-vp-icon">
-                    {vp.icon}
-                  </div>
+                  <div className="h5-vp-icon">{vp.icon}</div>
                   <div className="h5-vp-meta">
                     <span className="h5-vp-tag">{vp.tag}</span>
                     <div className="h5-vp-stat-inline">
@@ -274,20 +311,15 @@ export default function Home5() {
                   </div>
                 </div>
 
-                {/* Divider */}
                 <div className="h5-vp-div" />
 
-                {/* Headline */}
                 <h3 className="h5-vp-headline">
                   {vp.headline.map((line, li) => (
                     <span key={li} className="h5-vp-hline">{line}</span>
                   ))}
                 </h3>
 
-                {/* Body */}
                 <p className="h5-vp-body">{vp.body}</p>
-
-                {/* Bottom accent bar */}
                 <div className="h5-vp-bar" />
               </div>
             ))}

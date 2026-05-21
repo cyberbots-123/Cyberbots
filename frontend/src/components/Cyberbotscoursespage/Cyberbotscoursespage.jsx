@@ -1,4 +1,5 @@
 import { useState } from "react";
+import assets from "../../assets/assets";
 
 /* ══════════════════════════════════════════════════════════
    DATA — 10 courses, each with tiers (Beginner/Intermediate/Advanced)
@@ -11,12 +12,12 @@ const COURSES = [
     icon: "🤖",
     color: "#e85d2f",
     accent: "#fff3ee",
-    image: "https://images.unsplash.com/photo-1535378917042-10a22c95931a?w=600&auto=format&fit=crop&q=70",
+    image: assets.Robotics,
     tiers: [
       {
         tier: "Beginner", ageGroup: "Age 8–11", hours: "20 Hours", schedule: "2 hrs/day",
         levels: [
-          { level: "Level 1", name: "Robot Spark", desc: "Circuits, motors, sensors. Build a remote-controlled car and a line-following bot.", tags: ["Circuits","Motors","Sensors","Line Bot"] },
+          { level: "Level 1", name: "Robot Spark ", desc: "Circuits, motors, sensors. Build a remote-controlled car and a line-following bot.", tags: ["Circuits","Motors","Sensors","Line Bot"] },
           { level: "Level 2", name: "Robot Explorer", desc: "Multi-sensor builds, relay logic and feedback systems with real hardware kits.", tags: ["Relay","Feedback","Sensors","Teamwork"] },
         ]
       },
@@ -42,7 +43,7 @@ const COURSES = [
     icon: "🔬",
     color: "#0f9d6b",
     accent: "#edfaf4",
-    image: "https://images.unsplash.com/photo-1567653418876-5bb0e566e1c2?w=600&auto=format&fit=crop&q=70",
+    image: assets.Stem,
     tiers: [
       {
         tier: "Beginner", ageGroup: "Below 8 Years", hours: "Project-Based", schedule: "Flexible",
@@ -62,7 +63,7 @@ const COURSES = [
     icon: "📡",
     color: "#0095c2",
     accent: "#e8f6fb",
-    image: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&auto=format&fit=crop&q=70",
+    image: assets.Iot,
     tiers: [
       {
         tier: "Intermediate", ageGroup: "Age 12–14", hours: "30 Hours", schedule: "3 hrs/day",
@@ -86,7 +87,7 @@ const COURSES = [
     icon: "🌐",
     color: "#6d35d9",
     accent: "#f3eeff",
-    image: "https://images.unsplash.com/photo-1547658719-da2b51169166?w=600&auto=format&fit=crop&q=70",
+    image: assets.Web_Develolpment,
     tiers: [
       {
         tier: "Advanced", ageGroup: "Age 15–18", hours: "40 Hours", schedule: "2 hrs/day",
@@ -103,7 +104,7 @@ const COURSES = [
     icon: "🖨️",
     color: "#c97a0c",
     accent: "#fef7e8",
-    image: "https://images.unsplash.com/photo-1638959606285-efca6c51f27f?w=600&auto=format&fit=crop&q=70",
+    image: assets.Printing,
     tiers: [
       {
         tier: "Intermediate", ageGroup: "Age 12–14", hours: "30 Hours", schedule: "3 hrs/day",
@@ -127,7 +128,7 @@ const COURSES = [
     icon: "🧠",
     color: "#d43c8a",
     accent: "#fde9f4",
-    image: "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=600&auto=format&fit=crop&q=70",
+    image: assets.AI,
     tiers: [
       {
         tier: "Beginner", ageGroup: "Age 8–11", hours: "20 Hours", schedule: "2 hrs/day",
@@ -158,7 +159,7 @@ const COURSES = [
     icon: "🚁",
     color: "#4f46d1",
     accent: "#eeeeff",
-    image: "https://images.unsplash.com/photo-1473968512647-3e447244af8f?w=600&auto=format&fit=crop&q=70",
+    image: assets.Drone,
     tiers: [
       {
         tier: "Intermediate", ageGroup: "Age 12–14", hours: "20 Hours", schedule: "2 hrs/day",
@@ -182,7 +183,7 @@ const COURSES = [
     icon: "📊",
     color: "#0f9d6b",
     accent: "#edfaf4",
-    image: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&auto=format&fit=crop&q=70",
+    image: assets.DataScience,
     tiers: [
       {
         tier: "Intermediate", ageGroup: "Age 12–14", hours: "30 Hours", schedule: "3 hrs/day",
@@ -206,7 +207,7 @@ const COURSES = [
     icon: "📱",
     color: "#e85d2f",
     accent: "#fff3ee",
-    image: "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=600&auto=format&fit=crop&q=70",
+    image: assets.AppDevelopement,
     tiers: [
       {
         tier: "Intermediate", ageGroup: "Age 12–14", hours: "20 Hours", schedule: "2 hrs/day",
@@ -230,7 +231,7 @@ const COURSES = [
     icon: "💻",
     color: "#0095c2",
     accent: "#e8f6fb",
-    image: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600&auto=format&fit=crop&q=70",
+    image: assets.Programming,
     languages: ["C#","C++","HTML","Python"],
     tiers: [
       {
