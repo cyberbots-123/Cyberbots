@@ -1,10 +1,14 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import "./Home3.css";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import assets from "../../assets/assets";
 
 gsap.registerPlugin(ScrollTrigger);
+
+// FIX: Enable GSAP force3D globally so all animated elements get translateZ(0)
+// This avoids per-element GPU promotion delays during scroll
+gsap.config({ force3D: true });
 
 const courses = [
   {
@@ -62,35 +66,52 @@ const courses = [
 export default function Home3() {
   const rootRef = useRef();
   const headRef = useRef();
-  const [hovered, setHovered] = useState(null);
+
+  // FIX: Removed useState(hovered) entirely.
+  // Previously every onMouseEnter / onMouseLeave called setHovered(), which triggered
+  // a full React re-render of ALL 10 cards on every hover event — including during scroll.
+  // Hover styles are now handled 100% via CSS :hover pseudo-class — zero JS, zero re-renders.
 
   useEffect(() => {
     const ctx = gsap.context(() => {
-      // heading entrance
       gsap.fromTo(".h3-tag",
         { opacity: 0, x: -14 },
-        { opacity: 1, x: 0, duration: 0.45, ease: "power2.out",
-          scrollTrigger: { trigger: headRef.current, start: "top 82%", once: true } });
+        {
+          opacity: 1, x: 0, duration: 0.45, ease: "power2.out",
+          scrollTrigger: { trigger: headRef.current, start: "top 82%", once: true },
+        });
 
       gsap.fromTo(".h3-line",
         { scaleX: 0 },
-        { scaleX: 1, duration: 0.5, ease: "power3.out",
-          scrollTrigger: { trigger: headRef.current, start: "top 82%", once: true } });
+        {
+          scaleX: 1, duration: 0.5, ease: "power3.out",
+          scrollTrigger: { trigger: headRef.current, start: "top 82%", once: true },
+        });
 
       gsap.fromTo(".h3-title-row",
         { opacity: 0, y: 40 },
-        { opacity: 1, y: 0, duration: 0.55, stagger: 0.08, ease: "expo.out",
-          scrollTrigger: { trigger: headRef.current, start: "top 80%", once: true } });
+        {
+          opacity: 1, y: 0, duration: 0.55, stagger: 0.08, ease: "expo.out",
+          scrollTrigger: { trigger: headRef.current, start: "top 80%", once: true },
+        });
 
       gsap.fromTo(".h3-sub",
         { opacity: 0, y: 16 },
-        { opacity: 1, y: 0, duration: 0.45, ease: "power2.out",
-          scrollTrigger: { trigger: headRef.current, start: "top 78%", once: true } });
+        {
+          opacity: 1, y: 0, duration: 0.45, ease: "power2.out",
+          scrollTrigger: { trigger: headRef.current, start: "top 78%", once: true },
+        });
 
-      // cards — batched for performance
+      // FIX: Release will-change after entrance animation so GPU layers aren't held indefinitely
       ScrollTrigger.batch(".h3-card", {
         onEnter: (batch) =>
-          gsap.to(batch, { opacity: 1, y: 0, scale: 1, duration: 0.45, stagger: 0.05, ease: "power3.out" }),
+          gsap.to(batch, {
+            opacity: 1, y: 0, scale: 1,
+            duration: 0.45, stagger: 0.05, ease: "power3.out",
+            onComplete: () => {
+              batch.forEach((el) => (el.style.willChange = "auto"));
+            },
+          }),
         start: "top 85%",
         once: true,
       });
@@ -101,7 +122,6 @@ export default function Home3() {
 
   return (
     <section className="h3" ref={rootRef}>
-      {/* static grid texture — no animation */}
       <div className="h3-circuit" aria-hidden />
 
       <div className="h3-inner">
@@ -129,15 +149,23 @@ export default function Home3() {
 
         <div className="h3-grid">
           {courses.map((c) => (
+            // FIX: Removed onMouseEnter / onMouseLeave handlers — no more React events on hover.
+            // CSS :hover handles all visual changes. --card-accent is set once at render time.
             <div
               key={c.id}
-              className={`h3-card${hovered === c.id ? " h3-card--hovered" : ""}`}
+              className="h3-card"
               style={{ "--card-accent": c.accent }}
-              onMouseEnter={() => setHovered(c.id)}
-              onMouseLeave={() => setHovered(null)}
             >
               <div className="h3-card-img-wrap">
-                <img src={c.image} alt={c.title} className="h3-card-img" loading="lazy" />
+                <img
+                  src={c.image}
+                  alt={c.title}
+                  className="h3-card-img"
+                  loading="lazy"
+                  // FIX: Explicit width/height prevent layout shift during image load
+                  width="300"
+                  height="140"
+                />
                 <div className="h3-card-img-overlay" />
               </div>
 
@@ -148,16 +176,17 @@ export default function Home3() {
                 <h3 className="h3-card-title">{c.title}</h3>
                 <p className="h3-card-desc">{c.desc}</p>
                 <div className="h3-card-tags">
-                  {c.tags.map(t => <span key={t} className="h3-card-tag">{t}</span>)}
+                  {c.tags.map((t) => (
+                    <span key={t} className="h3-card-tag">{t}</span>
+                  ))}
                 </div>
                 <div className="h3-card-arrow">
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                    <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </div>
               </div>
 
-              {/* bottom glow bar — CSS transition only */}
               <div className="h3-card-glow" />
             </div>
           ))}
@@ -167,7 +196,7 @@ export default function Home3() {
           <button className="h3-cta-btn">
             View All Courses
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         </div>

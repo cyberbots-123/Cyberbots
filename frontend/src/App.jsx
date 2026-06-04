@@ -9,6 +9,8 @@ import Course from "./pages/Course/Course";
 import Contact from "./pages/Contact/Contact";
 import UnderConstruction from "./components/Underconstruction/Underconstruction";
 import CyberbotsAboutBlue from "./components/Cyberbotsaboutus/Cyberbotsaboutus";
+import CyberMart from "./components/Cybermart/Cybermart";
+import CyberBotsShowcase from "./components/Cyberbotsshowcase/Cyberbotsshowcase";
 
 export default function App() {
   return (
@@ -22,8 +24,8 @@ export default function App() {
             <Route path="/courses" element={<Course />} />
 
             {/* Under Construction Pages */}
-            <Route path="/shop" element={<UnderConstruction />} />
-            <Route path="/events" element={<UnderConstruction />} />
+            <Route path="/shop" element={<CyberMart />} />
+            <Route path="/events" element={<CyberBotsShowcase />} />
             <Route path="/about" element={<CyberbotsAboutBlue />} />
             <Route path="/careers" element={<UnderConstruction />} />
             <Route path="/blog" element={<UnderConstruction />} />

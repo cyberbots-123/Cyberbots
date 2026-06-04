@@ -6,6 +6,7 @@ const cors       = require("cors");
 const helmet     = require("helmet");
 const rateLimit  = require("express-rate-limit");
 const connectDB  = require("./config/db");
+const enrollmentRoutes = require("./routes/enrollmentRoutes");
 
 // ── Connect to MongoDB ─────────────────────────────────────────────────────
 connectDB();
@@ -67,6 +68,8 @@ const apiLimiter = rateLimit({
 
 app.use("/api/", apiLimiter);
 app.use("/api/contact", submitLimiter); // applied only on POST by convention
+app.use("/api/enrollment", submitLimiter);
+app.use("/api/enrollment", enrollmentRoutes);
 
 // ────────────────────────────────────────────────────────────────────────────
 //  Routes

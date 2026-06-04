@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import assets from "../../assets/assets";
+import { submitEnrollment } from "../../api/enrollmentApi";
 
 /* ══════════════════════════════════════════════════════════
    DATA — 10 courses, each with tiers (Beginner/Intermediate/Advanced)
@@ -273,6 +274,16 @@ const TIER_CONFIG = {
 const CATEGORIES = ["All", ...COURSES.map(c => c.category)];
 
 /* ══════════════════════════════════════════════════════════
+   TIME SLOTS CONFIG
+══════════════════════════════════════════════════════════ */
+const TIME_SLOTS = [
+  { id: "10-12", label: "10:00 AM – 12:00 PM", icon: "🌤️", period: "Morning" },
+  { id: "12-2",  label: "12:00 PM – 2:00 PM",  icon: "☀️",  period: "Noon"    },
+  { id: "2-4",   label: "2:00 PM – 4:00 PM",   icon: "🌇",  period: "Afternoon"},
+  { id: "4-6",   label: "4:00 PM – 6:00 PM",   icon: "🌆",  period: "Evening"  },
+];
+
+/* ══════════════════════════════════════════════════════════
    ENROLLMENT MODAL (compact 3-step)
 ══════════════════════════════════════════════════════════ */
 const COURSE_OPTIONS = COURSES.map(c => c.category);
@@ -284,7 +295,7 @@ const STEPS = [
 const EMPTY_FORM = {
   studentName:"", dob:"", gender:"", grade:"", institution:"", learningMode:"",
   parentName:"", relationship:"", mobile:"", altMobile:"", email:"", address:"",
-  course:"", tier:"", levelName:"",
+  course:"", tier:"", levelName:"", timeSlot:"",
   c1:false, c2:false, c3:false,
 };
 
@@ -298,6 +309,26 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
   });
   const [done, setDone] = useState(false);
   const [errors, setErrors] = useState({});
+
+  // ── API state ──────────────────────────────────────────────────────────────
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState("");
+  const [serverData, setServerData] = useState(null); // holds response from backend
+
+  /* ── ref map: one ref per course option button ── */
+  const courseRefs = useRef({});
+
+  /* ── Auto-scroll to the pre-selected course when Step 3 mounts ── */
+  useEffect(() => {
+    if (step === 3 && form.course && courseRefs.current[form.course]) {
+      setTimeout(() => {
+        courseRefs.current[form.course].scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }, 120);
+    }
+  }, [step]);
 
   const set = (k,v) => setForm(f => ({ ...f, [k]:v }));
   const err = k => errors[k] ? "2.5px solid #ef4444" : "2px solid #e8eaf0";
@@ -321,6 +352,7 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
     }
     if (step===3) {
       if (!form.course) e.course=true;
+      if (!form.timeSlot) e.timeSlot=true;
       if (!form.c1) e.c1=true;
       if (!form.c2) e.c2=true;
       if (!form.c3) e.c3=true;
@@ -331,7 +363,39 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
 
   const next = () => { if (validate()) setStep(s=>s+1); };
   const prev = () => setStep(s=>s-1);
-  const submit = () => { if (validate()) setDone(true); };
+
+  // ── submit: calls the backend ──────────────────────────────────────────────
+  const submit = async () => {
+    if (!validate()) return;
+
+    setSubmitting(true);
+    setServerError("");
+
+    // Strip the UI-only checkbox keys before sending
+    const { c1, c2, c3, ...payload } = form;
+
+    try {
+      const data = await submitEnrollment(payload);
+      setServerData(data);   // { referenceNumber, studentName, parentName, email, ... }
+      setDone(true);
+    } catch (err) {
+      if (err.errors && Object.keys(err.errors).length > 0) {
+        // Server-side field errors → merge inline so they appear on the right step
+        setErrors(prev => ({ ...prev, ...err.errors }));
+        // If the errors relate to step 1 or 2 fields, walk the user back
+        const step1Keys = ["studentName","dob","gender","grade","institution","learningMode"];
+        const step2Keys = ["parentName","relationship","mobile","email","address"];
+        const hasStep1 = step1Keys.some(k => err.errors[k]);
+        const hasStep2 = step2Keys.some(k => err.errors[k]);
+        if (hasStep1) setStep(1);
+        else if (hasStep2) setStep(2);
+      } else {
+        setServerError(err.message || "Something went wrong. Please try again.");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const fld = (extra={}) => ({
     width:"100%", padding:"10px 13px", borderRadius:12, outline:"none",
@@ -340,15 +404,36 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
   });
   const lbl = { fontSize:11, fontWeight:800, color:"#6b7a99", marginBottom:3, display:"block", letterSpacing:.3 };
 
+  /* ── chosen slot label for success screen ── */
+  const chosenSlot = TIME_SLOTS.find(s => s.id === (serverData?.timeSlot || form.timeSlot));
+
+  // ── Success screen ─────────────────────────────────────────────────────────
   if (done) return (
     <Overlay onClose={onClose}>
       <div style={{ textAlign:"center", padding:"2.5rem 2rem" }}>
         <div style={{ fontSize:72 }}>🎉</div>
         <h2 style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1.8rem", color:"#7c3aed", margin:".75rem 0 .4rem" }}>You're Enrolled!</h2>
+
+        {/* Reference number badge */}
+        {serverData?.referenceNumber && (
+          <div style={{ display:"inline-block", margin:".5rem 0 1rem", padding:"8px 20px", background:"#f8f4ff", border:"1.5px dashed #c4b5fd", borderRadius:12 }}>
+            <p style={{ fontSize:10, fontWeight:800, color:"#7c3aed", letterSpacing:1.5, textTransform:"uppercase", margin:"0 0 3px" }}>Reference Number</p>
+            <p style={{ fontSize:20, fontWeight:900, fontFamily:"monospace", color:"#7c3aed", margin:0 }}>{serverData.referenceNumber}</p>
+          </div>
+        )}
+
         <p style={{ fontSize:13, color:"#6b7a99", lineHeight:1.7, marginBottom:"1.25rem" }}>
-          Awesome, <strong>{form.studentName}</strong>! 🚀<br/>
-          We'll contact <strong>{form.parentName}</strong> at <strong>{form.mobile}</strong><br/>
-          to confirm your spot in <span style={{ color:"#ff6b2b", fontWeight:800 }}>{form.course}{form.tier ? ` · ${form.tier}` : ""}{form.levelName ? ` · ${form.levelName}` : ""}</span>!
+          Awesome, <strong>{serverData?.studentName || form.studentName}</strong>! 🚀<br/>
+          We'll contact <strong>{serverData?.parentName || form.parentName}</strong> at <strong>{form.mobile}</strong><br/>
+          to confirm your spot in <span style={{ color:"#ff6b2b", fontWeight:800 }}>{serverData?.course || form.course}{(serverData?.tier || form.tier) ? ` · ${serverData?.tier || form.tier}` : ""}{(serverData?.levelName || form.levelName) ? ` · ${serverData?.levelName || form.levelName}` : ""}</span>!
+          {chosenSlot && (
+            <>
+              <br/>
+              Your preferred time slot: <span style={{ color:"#7c3aed", fontWeight:800 }}>{chosenSlot.icon} {chosenSlot.label}</span>
+            </>
+          )}
+          <br/>
+          <span style={{ fontSize:12, color:"#9ca3af" }}>A confirmation email has been sent to <strong>{serverData?.email || form.email}</strong></span>
         </p>
         <button onClick={onClose} style={{ padding:"10px 28px", borderRadius:100, border:"none", cursor:"pointer", background:"linear-gradient(135deg,#ff6b2b,#ec4899)", color:"#fff", fontFamily:"'Nunito',sans-serif", fontSize:13, fontWeight:800 }}>
           Back to Courses 🎒
@@ -360,7 +445,8 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
   return (
     <Overlay onClose={onClose}>
       <div style={{ display:"flex", flexDirection:"column", maxHeight:"90vh", width:"100%" }}>
-        {/* Header */}
+
+        {/* ── Header ── */}
         <div style={{ background:"linear-gradient(135deg,#7c3aed,#ec4899)", padding:"1.1rem 1.4rem .9rem", borderRadius:"22px 22px 0 0", flexShrink:0 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <div>
@@ -372,7 +458,8 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
             </div>
             <button onClick={onClose} style={{ background:"rgba(255,255,255,.2)", border:"none", borderRadius:"50%", width:30, height:30, cursor:"pointer", color:"#fff", fontSize:15, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
           </div>
-          {/* Steps */}
+
+          {/* Step indicator */}
           <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:0, marginTop:"1rem" }}>
             {STEPS.map((s,i) => {
               const active = step===s.id, doneSt = step>s.id;
@@ -391,8 +478,10 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
           </div>
         </div>
 
-        {/* Body */}
+        {/* ── Body ── */}
         <div style={{ overflowY:"auto", flex:1, padding:"1.25rem", scrollbarWidth:"thin" }}>
+
+          {/* ══ STEP 1 — Student ══ */}
           {step===1 && (
             <div style={{ display:"flex", flexDirection:"column", gap:".85rem" }}>
               <SH icon="🎒" title="Student Information" />
@@ -400,12 +489,12 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
                 <div style={{ gridColumn:"1/-1" }}>
                   <label style={lbl}>👦 Student Name *</label>
                   <input style={{ ...fld(), border:err("studentName") }} placeholder="Full name" value={form.studentName} onChange={e=>set("studentName",e.target.value)} />
-                  {errors.studentName && <EM msg="Name is required" />}
+                  {errors.studentName && <EM msg={typeof errors.studentName === "string" ? errors.studentName : "Name is required"} />}
                 </div>
                 <div>
                   <label style={lbl}>🎂 Date of Birth *</label>
                   <input type="date" style={{ ...fld(), border:err("dob") }} value={form.dob} onChange={e=>set("dob",e.target.value)} />
-                  {errors.dob && <EM msg="Required" />}
+                  {errors.dob && <EM msg={typeof errors.dob === "string" ? errors.dob : "Required"} />}
                 </div>
                 <div>
                   <label style={lbl}>🙋 Gender *</label>
@@ -413,17 +502,17 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
                     <option value="">Select</option>
                     {["Male","Female","Other"].map(g=><option key={g}>{g}</option>)}
                   </select>
-                  {errors.gender && <EM msg="Required" />}
+                  {errors.gender && <EM msg={typeof errors.gender === "string" ? errors.gender : "Required"} />}
                 </div>
                 <div>
                   <label style={lbl}>📚 Grade *</label>
                   <input style={{ ...fld(), border:err("grade") }} placeholder="e.g. Grade 7" value={form.grade} onChange={e=>set("grade",e.target.value)} />
-                  {errors.grade && <EM msg="Required" />}
+                  {errors.grade && <EM msg={typeof errors.grade === "string" ? errors.grade : "Required"} />}
                 </div>
                 <div style={{ gridColumn:"1/-1" }}>
                   <label style={lbl}>🏫 Institution *</label>
                   <input style={{ ...fld(), border:err("institution") }} placeholder="School or college" value={form.institution} onChange={e=>set("institution",e.target.value)} />
-                  {errors.institution && <EM msg="Required" />}
+                  {errors.institution && <EM msg={typeof errors.institution === "string" ? errors.institution : "Required"} />}
                 </div>
                 <div style={{ gridColumn:"1/-1" }}>
                   <label style={lbl}>💻 Learning Mode *</label>
@@ -434,12 +523,13 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
                       </button>
                     ))}
                   </div>
-                  {errors.learningMode && <EM msg="Please pick a mode" />}
+                  {errors.learningMode && <EM msg={typeof errors.learningMode === "string" ? errors.learningMode : "Please pick a mode"} />}
                 </div>
               </div>
             </div>
           )}
 
+          {/* ══ STEP 2 — Parent ══ */}
           {step===2 && (
             <div style={{ display:"flex", flexDirection:"column", gap:".85rem" }}>
               <SH icon="👨‍👩‍👧" title="Parent / Guardian" />
@@ -447,53 +537,184 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
                 <div>
                   <label style={lbl}>👤 Parent Name *</label>
                   <input style={{ ...fld(), border:err("parentName") }} placeholder="Full name" value={form.parentName} onChange={e=>set("parentName",e.target.value)} />
-                  {errors.parentName && <EM msg="Required" />}
+                  {errors.parentName && <EM msg={typeof errors.parentName === "string" ? errors.parentName : "Required"} />}
                 </div>
                 <div>
                   <label style={lbl}>🤝 Relationship *</label>
                   <input style={{ ...fld(), border:err("relationship") }} placeholder="Father / Mother" value={form.relationship} onChange={e=>set("relationship",e.target.value)} />
-                  {errors.relationship && <EM msg="Required" />}
+                  {errors.relationship && <EM msg={typeof errors.relationship === "string" ? errors.relationship : "Required"} />}
                 </div>
                 <div>
                   <label style={lbl}>📱 Mobile *</label>
                   <input type="tel" style={{ ...fld(), border:err("mobile") }} placeholder="+91 00000 00000" value={form.mobile} onChange={e=>set("mobile",e.target.value)} />
-                  {errors.mobile && <EM msg="Required" />}
+                  {errors.mobile && <EM msg={typeof errors.mobile === "string" ? errors.mobile : "Required"} />}
                 </div>
                 <div>
                   <label style={lbl}>📞 Alt Mobile</label>
-                  <input type="tel" style={fld()} placeholder="Optional" value={form.altMobile} onChange={e=>set("altMobile",e.target.value)} />
+                  <input type="tel" style={{ ...fld(), border:err("altMobile") }} placeholder="Optional" value={form.altMobile} onChange={e=>set("altMobile",e.target.value)} />
+                  {errors.altMobile && <EM msg={typeof errors.altMobile === "string" ? errors.altMobile : "Invalid number"} />}
                 </div>
                 <div style={{ gridColumn:"1/-1" }}>
                   <label style={lbl}>✉️ Email *</label>
                   <input type="email" style={{ ...fld(), border:err("email") }} placeholder="parent@email.com" value={form.email} onChange={e=>set("email",e.target.value)} />
-                  {errors.email && <EM msg="Required" />}
+                  {errors.email && <EM msg={typeof errors.email === "string" ? errors.email : "Required"} />}
                 </div>
                 <div style={{ gridColumn:"1/-1" }}>
                   <label style={lbl}>🏠 Address *</label>
                   <textarea rows={3} style={{ ...fld(), resize:"none", lineHeight:1.65, border:err("address") }} placeholder="Street, City, State, PIN" value={form.address} onChange={e=>set("address",e.target.value)} />
-                  {errors.address && <EM msg="Required" />}
+                  {errors.address && <EM msg={typeof errors.address === "string" ? errors.address : "Required"} />}
                 </div>
               </div>
             </div>
           )}
 
+          {/* ══ STEP 3 — Course ══ */}
           {step===3 && (
             <div style={{ display:"flex", flexDirection:"column", gap:".85rem" }}>
               <SH icon="🚀" title="Course Selection" />
+
+              {/* ── Auto-selected notice banner ── */}
+              {form.course && (
+                <div style={{
+                  display:"flex", alignItems:"center", gap:10,
+                  background:"rgba(124,58,237,.08)", border:"1.5px dashed #c4b5fd",
+                  borderRadius:14, padding:"10px 14px",
+                }}>
+                  <span style={{ fontSize:20 }}>{COURSES.find(x=>x.category===form.course)?.icon || "⭐"}</span>
+                  <div style={{ flex:1 }}>
+                    <p style={{ fontSize:11, fontWeight:800, color:"#7c3aed", margin:0 }}>Course Auto-Selected ✅</p>
+                    <p style={{ fontSize:12, color:"#6b7a99", margin:0, fontWeight:600 }}>
+                      <strong style={{ color:"#1a2340" }}>{form.course}</strong>
+                      {form.tier ? ` · ${form.tier}` : ""}
+                      {form.levelName ? ` · ${form.levelName}` : ""}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => set("course", "")}
+                    style={{ fontSize:11, fontWeight:800, color:"#ef4444", background:"#fee2e2", border:"none", borderRadius:8, padding:"4px 10px", cursor:"pointer", fontFamily:"'Nunito',sans-serif", whiteSpace:"nowrap" }}
+                  >
+                    Change ✕
+                  </button>
+                </div>
+              )}
+
+              {/* ── Program grid ── */}
               <div>
                 <label style={lbl}>🎓 Program *</label>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:7 }}>
-                  {COURSE_OPTIONS.map(c=>{
-                    const course_ = COURSES.find(x=>x.category===c);
+                  {COURSE_OPTIONS.map(c => {
+                    const course_ = COURSES.find(x => x.category === c);
+                    const isSelected = form.course === c;
                     return (
-                      <button key={c} onClick={()=>set("course",c)} style={{ padding:"9px 10px", borderRadius:12, cursor:"pointer", textAlign:"left", fontFamily:"'Nunito',sans-serif", fontSize:11, fontWeight:700, border:`2px solid ${form.course===c?"#7c3aed":"#e8eaf0"}`, background:form.course===c?"rgba(124,58,237,.07)":"#fff", color:form.course===c?"#7c3aed":"#6b7a99", transition:"all .2s", display:"flex", alignItems:"center", gap:5 }}>
-                        <span style={{ fontSize:14 }}>{course_?.icon||"⭐"}</span> {c}
+                      <button
+                        key={c}
+                        ref={el => { courseRefs.current[c] = el; }}
+                        onClick={() => {
+                          set("course", c);
+                          setErrors(e => ({ ...e, course: false }));
+                        }}
+                        style={{
+                          padding:"10px 12px",
+                          borderRadius:14,
+                          cursor:"pointer",
+                          textAlign:"left",
+                          fontFamily:"'Nunito',sans-serif",
+                          fontSize:11,
+                          fontWeight:700,
+                          border: isSelected
+                            ? `2.5px solid ${course_?.color || "#7c3aed"}`
+                            : errors.course
+                              ? "2px solid #ef4444"
+                              : "2px solid #e8eaf0",
+                          background: isSelected
+                            ? `${course_?.color || "#7c3aed"}15`
+                            : "#fff",
+                          color: isSelected ? (course_?.color || "#7c3aed") : "#6b7a99",
+                          transition:"all .22s",
+                          display:"flex",
+                          alignItems:"center",
+                          gap:6,
+                          boxShadow: isSelected
+                            ? `0 4px 16px ${course_?.color || "#7c3aed"}33`
+                            : "none",
+                          transform: isSelected ? "scale(1.03)" : "scale(1)",
+                          position:"relative",
+                          overflow:"hidden",
+                        }}
+                      >
+                        {isSelected && (
+                          <div style={{
+                            position:"absolute", top:0, left:0,
+                            width:4, height:"100%",
+                            background: course_?.color || "#7c3aed",
+                            borderRadius:"14px 0 0 14px",
+                          }} />
+                        )}
+                        <span style={{ fontSize:16, flexShrink:0, marginLeft: isSelected ? 6 : 0, transition:"margin .2s" }}>
+                          {course_?.icon || "⭐"}
+                        </span>
+                        <span style={{ flex:1, lineHeight:1.3 }}>{c}</span>
+                        {isSelected && (
+                          <div style={{
+                            width:18, height:18, borderRadius:"50%", flexShrink:0,
+                            background: course_?.color || "#7c3aed",
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                          }}>
+                            <span style={{ fontSize:10, color:"#fff", fontWeight:900, lineHeight:1 }}>✓</span>
+                          </div>
+                        )}
                       </button>
                     );
                   })}
                 </div>
                 {errors.course && <EM msg="Please select a program" />}
               </div>
+
+              {/* ── Time Slot Picker ── */}
+              <div>
+                <label style={lbl}>🕐 Preferred Time Slot *</label>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                  {TIME_SLOTS.map(slot => {
+                    const active = form.timeSlot === slot.id;
+                    return (
+                      <button
+                        key={slot.id}
+                        onClick={() => { set("timeSlot", slot.id); setErrors(e => ({ ...e, timeSlot: false })); }}
+                        style={{
+                          padding:"10px 12px", borderRadius:14, cursor:"pointer", textAlign:"left",
+                          fontFamily:"'Nunito',sans-serif",
+                          border:`2px solid ${active ? "#7c3aed" : errors.timeSlot ? "#ef4444" : "#e8eaf0"}`,
+                          background: active ? "rgba(124,58,237,.07)" : "#fff",
+                          transition:"all .2s", display:"flex", flexDirection:"column", gap:3,
+                          boxShadow: active ? "0 3px 12px rgba(124,58,237,.2)" : "none",
+                          position:"relative", overflow:"hidden",
+                        }}
+                      >
+                        {active && (
+                          <div style={{ position:"absolute", top:0, left:0, width:4, height:"100%", background:"linear-gradient(180deg,#7c3aed,#ec4899)", borderRadius:"14px 0 0 14px" }} />
+                        )}
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", paddingLeft: active ? 8 : 0, transition:"padding .2s" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                            <span style={{ fontSize:18 }}>{slot.icon}</span>
+                            <span style={{ fontSize:11, fontWeight:800, color:"#9ca3af", letterSpacing:.5 }}>{slot.period}</span>
+                          </div>
+                          {active && (
+                            <div style={{ width:18, height:18, borderRadius:"50%", background:"#7c3aed", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                              <span style={{ fontSize:10, color:"#fff", fontWeight:900 }}>✓</span>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ fontSize:12, fontWeight:800, color: active ? "#7c3aed" : "#1a2340", paddingLeft: active ? 8 : 0, transition:"padding .2s, color .2s" }}>
+                          {slot.label}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {errors.timeSlot && <EM msg="Please select a preferred time slot" />}
+              </div>
+
+              {/* ── Declaration ── */}
               <div style={{ background:"#f8f4ff", borderRadius:16, padding:"1rem", border:"1.5px dashed #c4b5fd", marginTop:4 }}>
                 <p style={{ fontSize:10, fontWeight:800, color:"#7c3aed", letterSpacing:1.5, textTransform:"uppercase", marginBottom:".65rem" }}>📋 Declaration</p>
                 <p style={{ fontSize:12, color:"#6b7a99", marginBottom:".75rem", lineHeight:1.6 }}>I, <strong style={{ color:"#1a2340" }}>{form.parentName||"(Parent/Guardian)"}</strong>, hereby:</p>
@@ -515,18 +736,43 @@ function EnrollModal({ course, selectedTier, selectedLevel, onClose }) {
           )}
         </div>
 
-        {/* Footer */}
+        {/* ── Server error banner (shown above footer) ── */}
+        {serverError && (
+          <div style={{ margin:"0 1.25rem .5rem", padding:"10px 14px", background:"#fef2f2", border:"1.5px solid #fecaca", borderRadius:12, display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ fontSize:16, flexShrink:0 }}>⚠️</span>
+            <p style={{ fontSize:12, color:"#dc2626", fontWeight:700, margin:0, flex:1 }}>{serverError}</p>
+            <button onClick={()=>setServerError("")} style={{ background:"none", border:"none", cursor:"pointer", color:"#dc2626", fontSize:14, padding:0, flexShrink:0 }}>✕</button>
+          </div>
+        )}
+
+        {/* ── Footer ── */}
         <div style={{ padding:".9rem 1.25rem", borderTop:"1.5px dashed rgba(0,0,0,.07)", display:"flex", justifyContent:"space-between", flexShrink:0 }}>
-          {step>1 ? <button onClick={prev} style={{ padding:"9px 20px", borderRadius:100, border:"2px solid #e8eaf0", background:"#fff", cursor:"pointer", fontFamily:"'Nunito',sans-serif", fontSize:12, fontWeight:800, color:"#6b7a99" }}>← Back</button> : <div/>}
-          {step<3 ? (
-            <button onClick={next} style={{ padding:"9px 24px", borderRadius:100, border:"none", cursor:"pointer", background:"linear-gradient(135deg,#7c3aed,#ec4899)", color:"#fff", fontFamily:"'Nunito',sans-serif", fontSize:12, fontWeight:800, boxShadow:"0 4px 12px rgba(124,58,237,.35)" }}>
-              Next Step →
-            </button>
-          ) : (
-            <button onClick={submit} style={{ padding:"9px 24px", borderRadius:100, border:"none", cursor:"pointer", background:"linear-gradient(135deg,#ff6b2b,#ec4899)", color:"#fff", fontFamily:"'Nunito',sans-serif", fontSize:12, fontWeight:800, boxShadow:"0 4px 12px rgba(255,107,43,.38)" }}>
-              🚀 Submit Enrollment
-            </button>
-          )}
+          {step>1
+            ? <button onClick={prev} disabled={submitting} style={{ padding:"9px 20px", borderRadius:100, border:"2px solid #e8eaf0", background:"#fff", cursor:"pointer", fontFamily:"'Nunito',sans-serif", fontSize:12, fontWeight:800, color:"#6b7a99", opacity:submitting?0.5:1 }}>← Back</button>
+            : <div/>
+          }
+          {step<3
+            ? <button onClick={next} style={{ padding:"9px 24px", borderRadius:100, border:"none", cursor:"pointer", background:"linear-gradient(135deg,#7c3aed,#ec4899)", color:"#fff", fontFamily:"'Nunito',sans-serif", fontSize:12, fontWeight:800, boxShadow:"0 4px 12px rgba(124,58,237,.35)" }}>Next Step →</button>
+            : <button
+                onClick={submit}
+                disabled={submitting}
+                style={{
+                  padding:"9px 24px", borderRadius:100, border:"none", cursor: submitting ? "not-allowed" : "pointer",
+                  background: submitting ? "linear-gradient(135deg,#9ca3af,#6b7280)" : "linear-gradient(135deg,#ff6b2b,#ec4899)",
+                  color:"#fff", fontFamily:"'Nunito',sans-serif", fontSize:12, fontWeight:800,
+                  boxShadow: submitting ? "none" : "0 4px 12px rgba(255,107,43,.38)",
+                  opacity: submitting ? 0.8 : 1,
+                  display:"flex", alignItems:"center", gap:7, transition:"all .2s",
+                }}
+              >
+                {submitting ? (
+                  <>
+                    <span style={{ width:14, height:14, border:"2px solid rgba(255,255,255,.4)", borderTopColor:"#fff", borderRadius:"50%", display:"inline-block", animation:"spin .7s linear infinite" }} />
+                    Submitting…
+                  </>
+                ) : "🚀 Submit Enrollment"}
+              </button>
+          }
         </div>
       </div>
     </Overlay>
@@ -559,14 +805,11 @@ function EM({ msg }) {
 ══════════════════════════════════════════════════════════ */
 function CourseCard({ course, index, onEnroll }) {
   const [hovered, setHovered] = useState(false);
-  // Which tier is selected (default to first)
   const [selTierIdx, setSelTierIdx] = useState(0);
-  // Which level is selected (default to first of that tier)
   const [selLvlIdx, setSelLvlIdx] = useState(0);
 
   const tier = course.tiers[selTierIdx];
   const level = tier?.levels[selLvlIdx];
-  const tierCfg = TIER_CONFIG[tier?.tier] || TIER_CONFIG.Beginner;
 
   const handleTierChange = (idx) => {
     setSelTierIdx(idx);
@@ -608,7 +851,7 @@ function CourseCard({ course, index, onEnroll }) {
       {/* Body */}
       <div style={{ padding:"1rem", flex:1, display:"flex", flexDirection:"column", gap:".75rem" }}>
 
-        {/* ── Tier selector ── */}
+        {/* Tier selector */}
         <div>
           <div style={{ fontSize:10, fontWeight:800, color:"#9ca3af", letterSpacing:1.5, textTransform:"uppercase", marginBottom:6 }}>Select Level</div>
           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
@@ -636,7 +879,7 @@ function CourseCard({ course, index, onEnroll }) {
           </div>
         </div>
 
-        {/* ── Info strip for selected tier ── */}
+        {/* Info strip */}
         <div style={{ background: course.accent, borderRadius:12, padding:"8px 12px", display:"flex", gap:"1.25rem", flexWrap:"wrap" }}>
           {[
             { icon:"👦", label: tier.ageGroup },
@@ -649,7 +892,7 @@ function CourseCard({ course, index, onEnroll }) {
           ))}
         </div>
 
-        {/* ── Level selector ── */}
+        {/* Level selector */}
         <div>
           <div style={{ fontSize:10, fontWeight:800, color:"#9ca3af", letterSpacing:1.5, textTransform:"uppercase", marginBottom:6 }}>
             Pick a Level <span style={{ color:course.color }}>({tier.levels.length} available)</span>
@@ -682,7 +925,7 @@ function CourseCard({ course, index, onEnroll }) {
           </div>
         </div>
 
-        {/* ── Selected level detail ── */}
+        {/* Level detail */}
         {level && (
           <div style={{ background:"#f9fafb", borderRadius:12, padding:"10px 12px", flex:1, display:"flex", flexDirection:"column", gap:8 }}>
             <p style={{ fontSize:12, color:"#4b5563", lineHeight:1.65, margin:0, flex:1, display:"-webkit-box", WebkitLineClamp:3, WebkitBoxOrient:"vertical", overflow:"hidden" }}>
@@ -696,7 +939,7 @@ function CourseCard({ course, index, onEnroll }) {
           </div>
         )}
 
-        {/* ── Enroll button ── */}
+        {/* Enroll button */}
         <button
           onClick={() => onEnroll({ course, tier, level })}
           style={{
@@ -768,6 +1011,7 @@ export default function CyberbotsCoursesPage() {
         @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         @keyframes modalIn{from{opacity:0;transform:scale(.88) translateY(18px)}to{opacity:1;transform:scale(1) translateY(0)}}
         @keyframes bounceIn{0%{opacity:0;transform:scale(.8) translateY(18px)}70%{transform:scale(1.04)}100%{opacity:1;transform:scale(1) translateY(0)}}
+        @keyframes spin{to{transform:rotate(360deg)}}
       `}</style>
 
       <div style={{ background:"#f0f7ff", minHeight:"100vh", fontFamily:"'Nunito',sans-serif", color:"#1a2340", overflowX:"hidden", position:"relative", paddingBottom:"4rem" }}>
