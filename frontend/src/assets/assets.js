@@ -106,9 +106,51 @@ import eve5 from "./eve5.jpg"
 import eve6 from "./eve6.jpg"
 import eve7 from "./eve7.jpg"
 import eve8 from "./eve8.jpg"
+import Event1 from "./Event1.jpg"
+import Edrone from "./Edrone.jpg"
+import Roboshow from "./Roboshow.jpg"
+import Theatre from "./Theatre.jpg"
+import Event2 from "./Event2.jpg"
+import Zone1A from "./Zone1A.png"
+import Zone1B from "./Zone1B.png"
+import Zone2A from "./Zone2A.png"
+import Zone2B from "./Zone2B.png"
+import Zone3A from "./Zone3A.png"
+import Zone3B from "./Zone3B.png"
+import ThemeMusic from "./ThemeMusic.mp3"
+import Zone1ARegisterBg from "./Zone1ARegisterBg.png"
+import Meenakshi from "./Meenakshi.png"
+import Vani from "./Vani.png"
+import ZONE1A from "./ZONE1A.pdf"
+import ZONE1B from "./ZONE1B.pdf"
+import ZONE2A from "./ZONE2A.pdf"
+import ZONE2B from "./ZONE2B.pdf"
+import ZONE3A from "./ZONE3A.pdf"
+import ZONE3B from "./ZONE3B.pdf"
 
 
 const assets = {
+    ZONE1A,
+    ZONE1B,
+    ZONE2A,
+    ZONE2B,
+    ZONE3A,
+    ZONE3B,
+    Meenakshi,
+    Vani,
+    Zone1ARegisterBg,
+    ThemeMusic,
+    Zone1A,
+    Zone1B,
+    Zone2A,
+    Zone2B,
+    Zone3A,
+    Zone3B,
+    Event2,
+    Edrone,
+    Roboshow,
+    Theatre,
+    Event1,
     eve1,eve2,eve3,eve4,eve5,eve6,eve7,eve8,
     bee1,bee2,bee3,bee4,bee5,bee6,bee7,bee8,
     ek1,ek2,ek3,ek4,ek5,ek6,

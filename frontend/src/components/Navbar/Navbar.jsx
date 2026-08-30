@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import ReactDOM from "react-dom";
 import assets from "../../assets/assets";
 import "./Navbar.css";
@@ -26,8 +26,8 @@ const PortalDropdown = ({ triggerRef, open, children, minWidth = 220 }) => {
 
     const r   = triggerRef.current.getBoundingClientRect();
     const vw  = window.innerWidth;
-    const raw = vw - r.right;                  // right-align with trigger
-    const clamped = Math.max(raw, 12);          // keep 12 px from edge
+    const raw = vw - r.right;
+    const clamped = Math.max(raw, 12);
 
     setPos({
       position : "fixed",
@@ -55,7 +55,6 @@ export default function Navbar() {
   const [isMobile,  setIsMobile]  = useState(
     typeof window !== "undefined" ? window.innerWidth <= BP_MOBILE : false
   );
-  // compact mode: between 1024–1180 px we tighten spacing a bit
   const [isCompact, setIsCompact] = useState(
     typeof window !== "undefined"
       ? window.innerWidth > BP_MOBILE && window.innerWidth <= 1180
@@ -65,11 +64,12 @@ export default function Navbar() {
   const lastY   = useRef(0);
   const whyRef  = useRef(null);
   const bellRef = useRef(null);
-  const userRef = useRef(null);
+
+  const navigate = useNavigate();
 
   const CART  = 3;
   const NOTIF = 2;
-  const LINKS = ["Home", "Courses", "Shop", "Events"];
+  const LINKS = ["Home", "Courses", "Shop", "Events", "Our Partners"];
 
   const WHY_LINKS = [
     { label: "About Us", to: "/about"   },
@@ -81,12 +81,6 @@ export default function Navbar() {
     { label: "New Course Available", to: "/courses", dot: "blue"  },
     { label: "Your order shipped",   to: "/orders",  dot: "green" },
     { label: "Offer ends tonight",   to: "/offers",  dot: "amber" },
-  ];
-  const PROFILE_LINKS = [
-    { label: "Dashboard",  to: "/dashboard"  },
-    { label: "My Courses", to: "/my-courses" },
-    { label: "Orders",     to: "/orders"     },
-    { label: "Settings",   to: "/settings"   },
   ];
 
   /* ── Resize listener ─────────────────────────────────── */
@@ -143,7 +137,19 @@ export default function Navbar() {
     document.body.classList.remove("menu-open");
   }, []);
 
-  /* ── Compact class for tighter spacing on ~1025-1180 px ─ */
+  /* ── Profile icon click → navigate to /login ─────────── */
+  const handleProfileClick = useCallback(() => {
+    navigate("/login");
+  }, [navigate]);
+
+  /* ── Helper: resolve path for a given link label ──────── */
+  const linkPath = (lk) => {
+    if (lk === "Home") return "/";
+    if (lk === "Our Partners") return "/portal";
+    return `/${lk.toLowerCase()}`;
+  };
+
+  /* ── Compact class ────────────────────────────────────── */
   const navbarClass = [
     "cb-navbar",
     scrolled  ? "scrolled" : "",
@@ -177,7 +183,7 @@ export default function Navbar() {
                 {LINKS.map(lk => (
                   <Link
                     key={lk}
-                    to={lk === "Home" ? "/" : `/${lk.toLowerCase()}`}
+                    to={linkPath(lk)}
                     className={`cb-link${active === lk.toLowerCase() ? " active" : ""}`}
                     onClick={() => setActive(lk.toLowerCase())}
                   >
@@ -273,47 +279,15 @@ export default function Navbar() {
                 {/* Theme toggle placeholder */}
                 {/* <ThemeToggle /> */}
 
-                {/* Profile */}
-                <div className="cb-trigger-wrap" onClick={e => e.stopPropagation()}>
-                  <button
-                    ref={userRef}
-                    className="cb-avatar"
-                    onClick={e => toggle("profile", e)}
-                  >
-                    <User size={16} />
-                  </button>
-                  <PortalDropdown
-                    triggerRef={userRef}
-                    open={dropdown === "profile"}
-                    minWidth={200}
-                  >
-                    <div className="pd-profile-head">
-                      <div className="pd-av"><User size={15} /></div>
-                      <div>
-                        <div className="pd-name">My Account</div>
-                        <div className="pd-sub">Cyberbots Member</div>
-                      </div>
-                    </div>
-                    <div className="pd-sep" />
-                    {PROFILE_LINKS.map(({ label, to }) => (
-                      <Link
-                        key={label} to={to}
-                        className="pd-link"
-                        onClick={closeSidebar}
-                      >
-                        {label}
-                      </Link>
-                    ))}
-                    <div className="pd-sep" />
-                    <Link
-                      to="/logout"
-                      className="pd-link logout"
-                      onClick={closeSidebar}
-                    >
-                      Logout
-                    </Link>
-                  </PortalDropdown>
-                </div>
+                {/* ── Profile avatar → navigates to /login ── */}
+                <button
+                  className="cb-avatar"
+                  onClick={handleProfileClick}
+                  aria-label="Sign in to your account"
+                >
+                  <User size={16} />
+                </button>
+
               </div>
             </div>
           )}
@@ -366,7 +340,7 @@ export default function Navbar() {
               {LINKS.map(lk => (
                 <Link
                   key={lk}
-                  to={lk === "Home" ? "/" : `/${lk.toLowerCase()}`}
+                  to={linkPath(lk)}
                   className={`cb-sb-link${active === lk.toLowerCase() ? " active" : ""}`}
                   onClick={() => { setActive(lk.toLowerCase()); closeSidebar(); }}
                 >
@@ -443,44 +417,16 @@ export default function Navbar() {
                 </div>
               )}
 
-              {/* Profile accordion */}
-              <button
-                className={`cb-sb-row cb-sb-trig${dropdown === "profile" ? " open" : ""}`}
-                onClick={e => toggle("profile", e)}
+              {/* ── Profile row → navigates to /login ── */}
+              <Link
+                to="/login"
+                className="cb-sb-row"
+                onClick={closeSidebar}
               >
                 <span className="cb-sb-icon"><User size={17} /></span>
-                <span>Profile</span>
-                <svg
-                  width="10" height="7" viewBox="0 0 12 8"
-                  fill="none" className="cb-chevron"
-                  style={{ marginLeft: "auto" }}
-                >
-                  <path
-                    d="M1 1l5 5 5-5"
-                    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-              {dropdown === "profile" && (
-                <div className="cb-sb-sub">
-                  {PROFILE_LINKS.map(({ label, to }) => (
-                    <Link
-                      key={label} to={to}
-                      className="cb-sb-sub-link"
-                      onClick={closeSidebar}
-                    >
-                      {label}
-                    </Link>
-                  ))}
-                  <Link
-                    to="/logout"
-                    className="cb-sb-sub-link logout"
-                    onClick={closeSidebar}
-                  >
-                    Logout
-                  </Link>
-                </div>
-              )}
+                <span>Sign in</span>
+              </Link>
+
             </div>
 
             <div className="cb-sb-foot">© 2025 Cyberbots</div>
