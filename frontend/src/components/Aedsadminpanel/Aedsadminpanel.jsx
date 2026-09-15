@@ -20,6 +20,11 @@ import { BASE_URL } from "../../api/http";
 // Activity dropdown on the Workbook Completion AND Worksheet Completion
 // tabs below (see curriculumOptionsForGrade); nothing else reads it.
 import AEDS_CURRICULUM from "../../data/aedsCurriculum";
+// BULK IMPORT — parses .csv/.xlsx/.xls files client-side for the "Import
+// from file" button on every EditableTable (Kits Inventory, Workbooks,
+// Atal Lab Stock, etc.) — see ImportRowsModal below. Run `npm install xlsx`
+// if this isn't already a dependency.
+import * as XLSX from "xlsx";
 
 // ────────────────────────────────────────────────────────────────────────────
 //  WORKSHEETS / WORKBOOKS REALIGNMENT (this file's newest change):
@@ -61,14 +66,53 @@ import AEDS_CURRICULUM from "../../data/aedsCurriculum";
 //  splitGradeSection); the split is written back the next time that
 //  grade's rows are saved.
 //
-//  FACULTY PROFILE (this pass): a new "Faculty Profile" tab drives the
+//  FACULTY PROFILE (earlier pass): a new "Faculty Profile" tab drives the
 //  infographic-style faculty card shown on the client dashboard. Scalar
 //  fields (name, title, photo, quote, contact, signatory, certification
-//  text) live on `school.facultyProfile`; the five list-shaped parts of
-//  the card (stats / expertise / teaching expertise / tools / key
-//  strengths) each get their own row array, reusing the same generic
-//  EditableTable every other sheet already uses. See FacultyProfileTab
-//  near the bottom of this file.
+//  text) live alongside five list-shaped parts of the card (stats /
+//  expertise / teaching expertise / tools / key strengths), each its own
+//  row array, reusing the same generic EditableTable every other sheet
+//  already uses.
+//
+//  MULTI-FACULTY PROFILE (this pass): a school can now have MORE THAN ONE
+//  faculty member on its Faculty Profile page — e.g. a lead faculty and an
+//  assistant, or a faculty handed off mid-year. The data model changed
+//  from one object + five flat arrays to an ARRAY of self-contained
+//  entries:
+//
+//    • `school.facultyProfile` (object) + `school.facultyStatsRows` /
+//      `facultyExpertiseRows` / `facultyTeachingRows` / `facultyToolsRows`
+//      / `facultyStrengthsRows` (five flat arrays)
+//        → `school.facultyProfiles` (array). Each entry carries a stable
+//          `id` plus its OWN scalar fields and its OWN five row arrays
+//          (`statsRows`, `expertiseRows`, `teachingRows`, `toolsRows`,
+//          `strengthsRows`) — see blankFacultyProfile() below.
+//    • FacultyProfileTab now shows a tab strip (one pill per faculty
+//      member, same visual pattern as CompletionEditor's grade tabs) with
+//      "+ Add faculty member" / "Delete this faculty member" controls,
+//      and renders the full form scoped to whichever member is selected.
+//    • FacultyPhotoEditor / SignaturePhotoEditor take a `facultyId` so an
+//      upload can be attached to the right member — see the note above
+//      those two components for the matching API/backend change needed.
+//    • migrateFacultyProfile() converts a school still holding the OLD
+//      single-object shape (loaded from a not-yet-upgraded backend, or
+//      pasted into Export/Import) into a one-entry `facultyProfiles`
+//      array, the same way nestedToRows()/splitGradeSection() carry
+//      forward old Worksheets rows above. It's applied everywhere a
+//      school is read from the server or from a pasted import.
+//
+//  BACKEND WORK STILL NEEDED (not in this file):
+//    • models/School.js: replace the `facultyProfile` + five flat-array
+//      fields with a `facultyProfiles: [...]` array field, and add it to
+//      WRITABLE_FIELDS in controllers/schoolController.js — same trap as
+//      `workbooks` / `worksheetCompletionData` above: skip either step and
+//      a save silently drops the data.
+//    • api/schoolApi.js: `uploadFacultyPhoto` / `deleteFacultyPhoto` /
+//      `uploadSignaturePhoto` / `deleteSignaturePhoto` need a `facultyId`
+//      argument threaded through to the backend route (mirroring how
+//      `uploadMediaPhotos` / `deleteMediaPhoto` already take `{ rowId,
+//      rowIndex }`), so an upload lands on the right faculty member's
+//      entry instead of always the first one.
 // ────────────────────────────────────────────────────────────────────────────
 
 // ─── DEFAULTS FOR A NEW SCHOOL ──────────────────────────────────────────────
@@ -112,29 +156,14 @@ function blankSchool(name) {
     expoRows: [],
     facultyObservationRows: [],
     workAccomplishmentRows: [],
-    // NEW — Faculty Profile: the infographic-style faculty card. Blank on
-    // purpose — every field is edited from the new Faculty Profile tab.
-    facultyProfile: {
-      name: "",
-      title: "",
-      photo: "",
-      topBadge: "CYBERBOTS CERTIFIED FACULTY",
-      bottomSeal: "CYBERBOTS CERTIFIED EXPERT FACULTY",
-      tagline: "EMPOWERING STUDENTS THROUGH ROBOTICS  •  AI  •  INNOVATION  •  SKILLS",
-      quote: "",
-      contactPhone: "",
-      contactEmail: "",
-      contactWebsite: "",
-      contactLocation: "",
-      signatoryName: "",
-      signatoryTitle: "",
-      signatoryCompany: "",
-    },
-    facultyStatsRows: [],
-    facultyExpertiseRows: [],
-    facultyTeachingRows: [],
-    facultyToolsRows: [],
-    facultyStrengthsRows: [],
+    // CHANGED — Faculty Profile now supports MULTIPLE faculty members.
+    // Each entry is a self-contained card: the scalar bio/contact/
+    // certification fields PLUS its own five list-shaped row arrays
+    // (stats / expertise / teaching / tools / strengths), instead of one
+    // school-level facultyProfile object + five school-level row arrays.
+    // Starts empty on purpose — the admin adds one card per faculty member
+    // from the Faculty Profile tab. See blankFacultyProfile() below.
+    facultyProfiles: [],
     enabledSections: { ...DEFAULT_ENABLED_SECTIONS },
   };
 }
@@ -166,7 +195,7 @@ const SECTION_TOGGLES = [
   // NEW — Faculty Profile. Deliberately a DIFFERENT toggle key ("facultyProfile")
   // from the existing "faculty" key above (Faculty Observation) — they are
   // two unrelated sheets that happen to share the word "faculty".
-  { key: "facultyProfile", label: "Faculty Profile", hint: "Infographic-style faculty bio card — photo, stats, expertise, tools & key strengths.", tabs: ["facultyProfile"] },
+  { key: "facultyProfile", label: "Faculty Profile", hint: "Infographic-style faculty bio cards — one per faculty member, each with a photo, stats, expertise, tools & key strengths.", tabs: ["facultyProfile"] },
 ];
 
 const DEFAULT_ENABLED_SECTIONS = SECTION_TOGGLES.reduce((acc, s) => {
@@ -441,13 +470,23 @@ const TABLES = {
       { key: "link", label: "Link URL", type: "text" },
     ],
   },
-  // NEW — Faculty Profile list sections. Each mirrors one repeating part of
-  // the faculty card (see FacultyProfileTab below, which renders these five
-  // EditableTables together with the scalar form). Field NAMES here match
-  // what's printed on the faculty profile image (Stat Label / Value,
-  // Skill / Percent, checklist Item, tool Name, strength Label), per the
-  // request to keep the admin-facing field names matching the source image.
-  facultyStatsRows: {
+  // Faculty Profile's five list sections used to live here too, but each
+  // faculty member now carries its OWN copy of these row arrays (nested
+  // under school.facultyProfiles[i], not a school-level field) — see
+  // FACULTY_TABLE_DEFS right below, which FacultyProfileTab renders once
+  // per selected faculty member instead of once per school.
+};
+
+// Column definitions reused for every faculty member's five list-shaped
+// sections (see FacultyProfileTab). Kept out of TABLES above because these
+// aren't top-level school fields — TABLES is keyed by TAB_LIST id and
+// auto-rendered generically; these are rendered explicitly, once per
+// faculty member, against that member's own statsRows/expertiseRows/
+// teachingRows/toolsRows/strengthsRows. Field NAMES here match what's
+// printed on the faculty profile image (Stat Label / Value, Skill /
+// Percent, checklist Item, tool Name, strength Label).
+const FACULTY_TABLE_DEFS = {
+  statsRows: {
     label: "Faculty Profile — Stats",
     hint: "The stat cards under the faculty photo (e.g. \"Years of Experience\" → \"3+\"). The icon is chosen automatically from the label text.",
     empty: { label: "", value: "" },
@@ -456,7 +495,7 @@ const TABLES = {
       { key: "value", label: "Value", type: "text" },
     ],
   },
-  facultyExpertiseRows: {
+  expertiseRows: {
     label: "Faculty Profile — Expertise",
     hint: "The skill bars in the Expertise panel. Percent should be 0–100.",
     empty: { skill: "", percent: 80 },
@@ -465,19 +504,19 @@ const TABLES = {
       { key: "percent", label: "Percent", type: "number", min: 0 },
     ],
   },
-  facultyTeachingRows: {
+  teachingRows: {
     label: "Faculty Profile — Teaching Expertise",
     hint: "Checklist items in the Teaching Expertise panel, one per row (e.g. \"Grades Handled: 4 to 12\").",
     empty: { item: "" },
     columns: [{ key: "item", label: "Item", type: "text" }],
   },
-  facultyToolsRows: {
+  toolsRows: {
     label: "Faculty Profile — Tools & Technologies",
     hint: "Tools shown in the Tools & Technologies grid. The icon is chosen automatically from the tool name.",
     empty: { name: "" },
     columns: [{ key: "name", label: "Tool / Technology Name", type: "text" }],
   },
-  facultyStrengthsRows: {
+  strengthsRows: {
     label: "Faculty Profile — Key Strengths",
     hint: "Strength cards shown in the Key Strengths grid.",
     empty: { label: "" },
@@ -656,13 +695,426 @@ function collectNumberIssues(school) {
       }
     });
   }
+  // Faculty Profile — Expertise percent lives one level deeper (per
+  // faculty member, per row) than every other numeric field, so it isn't
+  // covered by the NUMBER_RULES sweep above and gets its own pass here.
+  (school?.facultyProfiles || []).forEach((person, pi) => {
+    (person.expertiseRows || []).forEach((row, ri) => {
+      const problem = numberProblem(row.percent, 0);
+      if (problem) {
+        issues.push({
+          tab: "facultyProfile",
+          tabLabel: "Faculty Profile",
+          row: ri + 1,
+          label: `${person.name || `Faculty ${pi + 1}`} · Expertise percent`,
+          message: problem,
+        });
+      }
+    });
+  });
   return issues;
+}
+
+// ─── BULK IMPORT — parse a CSV/Excel file into rows for any EditableTable ──
+//
+// Reused by EVERY generic table (Kits Inventory, Workbooks, Atal Lab Stock,
+// STEM Register, Assessments, Report Cards, Events, ...) via the "Import
+// from file" button next to "+ Add row" — see EditableTable below. Reads
+// .csv/.xlsx/.xls files client-side with SheetJS (`xlsx` on npm), guesses
+// which file column maps to which table column by matching header text,
+// and always shows a preview + a manual mapping override before anything
+// is added — a wrong guess the admin doesn't catch would otherwise
+// silently corrupt the table.
+
+function normalizeHeaderText(s) {
+  return String(s ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+// The first row "looks like" a header if at least one of its cells matches
+// (exactly, or as a substring either direction) one of this table's column
+// labels. Doesn't need to be perfect — the mapping step below always lets
+// the admin correct a wrong guess before anything is imported.
+function looksLikeHeaderRow(row, columns) {
+  if (!row || row.length === 0) return false;
+  const labels = columns.map((c) => normalizeHeaderText(c.label));
+  return row.some((cell) => {
+    const t = normalizeHeaderText(cell);
+    if (!t) return false;
+    return labels.some((l) => l === t || l.includes(t) || t.includes(l));
+  });
+}
+
+// Best-guess mapping from source column index → this table's column key,
+// based on the header row's text. Falls back to positional mapping (file's
+// 1st column → this table's 1st column, etc.) when there's no usable
+// header to go on.
+function buildAutoMapping(headerRow, sourceColumnCount, columns) {
+  const used = new Set();
+  const mapping = new Array(sourceColumnCount).fill("");
+  let anyMatch = false;
+
+  for (let i = 0; i < sourceColumnCount; i++) {
+    const t = normalizeHeaderText(headerRow?.[i]);
+    if (!t) continue;
+    const best =
+      columns.find((c) => !used.has(c.key) && normalizeHeaderText(c.label) === t) ||
+      columns.find(
+        (c) => !used.has(c.key) && (normalizeHeaderText(c.label).includes(t) || t.includes(normalizeHeaderText(c.label)))
+      );
+    if (best) {
+      mapping[i] = best.key;
+      used.add(best.key);
+      anyMatch = true;
+    }
+  }
+
+  if (!anyMatch) {
+    for (let i = 0; i < sourceColumnCount && i < columns.length; i++) {
+      mapping[i] = columns[i].key;
+    }
+  }
+  return mapping;
+}
+
+// Converts one raw cell value according to the target column's `type` —
+// matching how EditableTable itself stores each type (see the type switch
+// in its cell renderer below), so an imported row behaves exactly like a
+// hand-typed one from the moment it lands.
+function coerceImportedValue(raw, column) {
+  const str = raw == null ? "" : String(raw).trim();
+  switch (column.type) {
+    case "number": {
+      if (str === "") return 0;
+      const n = Number(str.replace(/,/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    }
+    case "qty":
+      return str === "" ? "0" : str;
+    case "date": {
+      const iso = toISODate(str);
+      return iso === null ? str : iso; // unrecognisable text is kept as-is, same as manual entry
+    }
+    case "select": {
+      if (column.options && column.options[0] === true) {
+        return /^(y|yes|true|1)$/i.test(str); // boolean-backed select (e.g. "Applicable")
+      }
+      const match = (column.options || []).find((o) => String(o).toLowerCase() === str.toLowerCase());
+      return match !== undefined ? match : str;
+    }
+    case "tags":
+      return str ? str.split(/[,;]/).map((s) => s.trim()).filter(Boolean) : [];
+    default:
+      return str;
+  }
+}
+
+function buildRowFromMapping(sourceRow, mapping, def) {
+  const row = { ...def.empty };
+  mapping.forEach((targetKey, i) => {
+    if (!targetKey) return;
+    const col = def.columns.find((c) => c.key === targetKey);
+    if (!col) return;
+    row[targetKey] = coerceImportedValue(sourceRow[i], col);
+  });
+  if (def.stampRowId) row.rowId = newRowId();
+  return row;
+}
+
+function rowHasAnyValue(row) {
+  return Object.values(row).some((v) => {
+    if (Array.isArray(v)) return v.length > 0;
+    return v !== "" && v !== null && v !== undefined;
+  });
+}
+
+// Blank starter file so whoever fills it in doesn't have to guess header
+// names — a genuine .xlsx workbook (not CSV), since that's the format
+// schools are actually handed and fill in. Column widths are set from the
+// header text so the file doesn't open with every header truncated.
+function downloadImportTemplate(def) {
+  const worksheet = XLSX.utils.aoa_to_sheet([def.columns.map((c) => c.label)]);
+  worksheet["!cols"] = def.columns.map((c) => ({ wch: Math.max(14, c.label.length + 2) }));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+  XLSX.writeFile(workbook, `${def.label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-template.xlsx`);
+}
+
+function ImportRowsModal({ def, existingCount, onImport, onClose }) {
+  const dialogRef = useRef(null);
+  const fileInputRef = useRef(null);
+  useDialogFocus(true, dialogRef, fileInputRef);
+
+  const [fileName, setFileName] = useState("");
+  const [error, setError] = useState("");
+  const [rawRows, setRawRows] = useState([]); // array of arrays, straight from the file
+  const [hasHeaderRow, setHasHeaderRow] = useState(true);
+  const [mapping, setMapping] = useState([]); // parallel to source columns: target key, or "" to skip
+  const [mode, setMode] = useState("append"); // "append" | "replace"
+  // Collapsed by default once every target column was matched automatically
+  // (i.e. the file's headers match this table's official template) — the
+  // admin only needs to open this if something needs correcting.
+  const [mappingExpanded, setMappingExpanded] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const sourceHeaders = useMemo(() => {
+    if (rawRows.length === 0) return [];
+    return hasHeaderRow
+      ? rawRows[0].map((h, i) => String(h ?? "").trim() || `Column ${i + 1}`)
+      : rawRows[0].map((_, i) => `Column ${i + 1}`);
+  }, [rawRows, hasHeaderRow]);
+
+  const dataRows = useMemo(() => (hasHeaderRow ? rawRows.slice(1) : rawRows), [rawRows, hasHeaderRow]);
+
+  // Applies a fresh auto-mapping and decides whether the mapping table
+  // needs the admin's eyes on it — every target column found a match (the
+  // file used the official template, headers untouched) → collapse it;
+  // anything less than that → leave it open, since a silent partial match
+  // is exactly the kind of mistake this dialog exists to catch.
+  const applyMapping = (headerRow, columnCount) => {
+    const nextMapping = buildAutoMapping(headerRow, columnCount, def.columns);
+    const fullMatch = def.columns.every((c) => nextMapping.includes(c.key));
+    setMapping(nextMapping);
+    setMappingExpanded(!fullMatch);
+  };
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError("");
+    setFileName(file.name);
+    try {
+      const buf = await file.arrayBuffer();
+      const workbook = XLSX.read(buf, { type: "array" }); // auto-detects .csv/.xlsx/.xls from content
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const parsed = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
+      const cleaned = parsed.filter((r) => Array.isArray(r) && r.some((cell) => String(cell ?? "").trim() !== ""));
+
+      if (cleaned.length === 0) {
+        setError("That file doesn't seem to have any rows in it.");
+        setRawRows([]);
+        return;
+      }
+
+      const guessHeader = looksLikeHeaderRow(cleaned[0], def.columns);
+      const columnCount = Math.max(...cleaned.map((r) => r.length));
+      setHasHeaderRow(guessHeader);
+      setRawRows(cleaned);
+      applyMapping(guessHeader ? cleaned[0] : null, columnCount);
+    } catch (err) {
+      setError("Couldn't read that file — make sure it's a .csv, .xlsx, or .xls file.");
+      setRawRows([]);
+    }
+  };
+
+  const updateMapping = (i, key) => {
+    setMapping((m) => {
+      const next = m.slice();
+      next[i] = key;
+      return next;
+    });
+  };
+
+  const toggleHeaderRow = (checked) => {
+    setHasHeaderRow(checked);
+    const columnCount = rawRows[0]?.length || 0;
+    applyMapping(checked ? rawRows[0] : null, columnCount);
+  };
+
+  const parsedRows = useMemo(
+    () => dataRows.map((r) => buildRowFromMapping(r, mapping, def)).filter(rowHasAnyValue),
+    [dataRows, mapping, def]
+  );
+
+  // Recomputed live (independent of mappingExpanded) so the status line
+  // stays accurate if the admin manually tweaks a mapping after opening it.
+  const fullyMatched = useMemo(() => def.columns.every((c) => mapping.includes(c.key)), [mapping, def.columns]);
+
+  const canImport = rawRows.length > 0 && mapping.some(Boolean) && parsedRows.length > 0;
+
+  const handleImport = () => {
+    onImport(parsedRows, mode);
+    onClose();
+  };
+
+  return (
+    <div className="a-modal-overlay" onClick={onClose}>
+      <div
+        ref={dialogRef}
+        className="a-modal a-modal-wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-rows-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="import-rows-title">Import rows from a file</h3>
+        <div className="table-hint">
+          Upload a .csv, .xlsx, or .xls file listing {def.label.toLowerCase()} — different schools can list
+          completely different components, only the column layout needs to match.{" "}
+          <button type="button" className="btn-ghost-sm" style={{ padding: "2px 8px" }} onClick={() => downloadImportTemplate(def)}>
+            ⬇ Download the .xlsx template
+          </button>
+        </div>
+
+        <label className="btn-primary-sm logo-upload" style={{ marginBottom: 14 }}>
+          {fileName ? `📄 ${fileName} — choose a different file` : "Choose file…"}
+          <input
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            ref={fileInputRef}
+            onChange={handleFile}
+            aria-label="Choose file to import"
+          />
+        </label>
+
+        {error && <div className="json-error" role="alert" style={{ marginBottom: 12 }}>{error}</div>}
+
+        {rawRows.length > 0 && (
+          <>
+            <label className="check-row" style={{ marginBottom: 14 }}>
+              <input type="checkbox" checked={hasHeaderRow} onChange={(e) => toggleHeaderRow(e.target.checked)} />
+              <span>First row is a header (column names), not data</span>
+            </label>
+
+            {/* Status line — collapsed-by-default mapping when the file matches
+                the official template exactly, so uploading it is just
+                "choose file → check preview → Import". Anything less than a
+                full match leaves the mapping table open, since that's
+                precisely the case that needs a human to look at it. */}
+            <div
+              role="status"
+              style={{
+                display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14,
+                fontSize: 13, fontWeight: 600,
+                color: fullyMatched ? "#15803d" : "#a16207",
+              }}
+            >
+              <span>
+                {fullyMatched
+                  ? "✓ Every column matched automatically — check the preview below, then import."
+                  : "⚠ Some columns couldn't be matched automatically — review the mapping below."}
+              </span>
+              <button type="button" className="btn-ghost-sm" onClick={() => setMappingExpanded((v) => !v)}>
+                {mappingExpanded ? "Hide column mapping" : "Show / change column mapping"}
+              </button>
+            </div>
+
+            {mappingExpanded && (
+              <>
+                <h4 className="subhead" style={{ marginTop: 0 }}>Match columns</h4>
+                <div className="etable-wrap" style={{ marginBottom: 18 }}>
+                  <table className="etable">
+                    <thead>
+                      <tr>
+                        {sourceHeaders.map((h, i) => (
+                          <th key={i} scope="col">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        {sourceHeaders.map((_, i) => (
+                          <td key={i}>
+                            <select
+                              aria-label={`Map "${sourceHeaders[i]}" to`}
+                              value={mapping[i] || ""}
+                              onChange={(e) => updateMapping(i, e.target.value)}
+                            >
+                              <option value="">— Don't import this column —</option>
+                              {def.columns.map((c) => (
+                                <option key={c.key} value={c.key}>{c.label}</option>
+                              ))}
+                            </select>
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            <h4 className="subhead">
+              Preview — {parsedRows.length} row{parsedRows.length === 1 ? "" : "s"} will be imported
+            </h4>
+            <div className="etable-wrap" style={{ marginBottom: 18, maxHeight: 220, overflowY: "auto" }}>
+              <table className="etable">
+                <thead>
+                  <tr>
+                    {def.columns.map((c) => (
+                      <th key={c.key} scope="col">{c.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {parsedRows.length === 0 && (
+                    <tr>
+                      <td colSpan={def.columns.length} className="etable-empty">
+                        Map at least one column above to see a preview.
+                      </td>
+                    </tr>
+                  )}
+                  {parsedRows.slice(0, 8).map((row, i) => (
+                    <tr key={i}>
+                      {def.columns.map((c) => (
+                        <td key={c.key}>{Array.isArray(row[c.key]) ? row[c.key].join(", ") : String(row[c.key] ?? "")}</td>
+                      ))}
+                    </tr>
+                  ))}
+                  {parsedRows.length > 8 && (
+                    <tr>
+                      <td colSpan={def.columns.length} className="etable-empty">
+                        …and {parsedRows.length - 8} more row{parsedRows.length - 8 === 1 ? "" : "s"}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {existingCount > 0 && (
+              <div className="form-grid" style={{ marginBottom: 18 }}>
+                <label className="field">
+                  <span className="field-label">This table already has {existingCount} row{existingCount === 1 ? "" : "s"}</span>
+                  <select value={mode} onChange={(e) => setMode(e.target.value)}>
+                    <option value="append">Add these rows to the existing ones</option>
+                    <option value="replace">Replace all existing rows with these</option>
+                  </select>
+                </label>
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="a-modal-actions">
+          <button className="a-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="a-btn-create" onClick={handleImport} disabled={!canImport}>
+            Import {parsedRows.length > 0 ? `${parsedRows.length} row${parsedRows.length === 1 ? "" : "s"}` : "rows"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── GENERIC EDITABLE TABLE ─────────────────────────────────────────────────
 
 function EditableTable({ def, rows, onChange }) {
   const safeRows = rows || [];
+
+  // BULK IMPORT: "Import from file" modal state — see ImportRowsModal above.
+  const [showImport, setShowImport] = useState(false);
+  const handleImportRows = (parsedRows, mode) => {
+    if (mode === "replace") onChange(parsedRows);
+    else onChange([...safeRows, ...parsedRows]);
+  };
 
   // A11Y: after "+ Add row", focus jumps into the new row's first field;
   // after removing a row, focus lands back on "+ Add row" instead of
@@ -804,9 +1256,22 @@ function EditableTable({ def, rows, onChange }) {
           </tbody>
         </table>
       </div>
-      <button className="add-row-btn" ref={addBtnRef} onClick={addRow}>
-        + Add row
-      </button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button className="add-row-btn" ref={addBtnRef} onClick={addRow}>
+          + Add row
+        </button>
+        <button type="button" className="btn-ghost-sm" onClick={() => setShowImport(true)}>
+          ⇪ Import from file
+        </button>
+      </div>
+      {showImport && (
+        <ImportRowsModal
+          def={def}
+          existingCount={safeRows.length}
+          onImport={handleImportRows}
+          onClose={() => setShowImport(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1100,13 +1565,102 @@ function LogoEditor({ school, update, onSchoolUpdated, flashToast, dirty }) {
   );
 }
 
-// ─── FACULTY PHOTO EDITOR — same pattern as LogoEditor, writes to
-// school.facultyProfile.photo via uploadFacultyPhoto / deleteFacultyPhoto.
-function FacultyPhotoEditor({ school, update, onSchoolUpdated, flashToast, dirty }) {
+// ─── MULTI-FACULTY: blank entry + legacy-shape migration ───────────────────
+//
+// One entry per faculty member on the Faculty Profile page. `id` is stable
+// (survives reorders/re-renders) and is what photo/signature uploads key
+// on — see the note above FacultyPhotoEditor below.
+function blankFacultyProfile() {
+  return {
+    id: newRowId(),
+    name: "",
+    title: "",
+    photo: "",
+    topBadge: "CYBERBOTS CERTIFIED FACULTY",
+    bottomSeal: "CYBERBOTS CERTIFIED EXPERT FACULTY",
+    tagline: "EMPOWERING STUDENTS THROUGH ROBOTICS  •  AI  •  INNOVATION  •  SKILLS",
+    quote: "",
+    contactPhone: "",
+    contactEmail: "",
+    contactWebsite: "",
+    contactLocation: "",
+    signatoryName: "",
+    signatoryTitle: "",
+    signatoryCompany: "",
+    signaturePhoto: "",
+    statsRows: [],
+    expertiseRows: [],
+    teachingRows: [],
+    toolsRows: [],
+    strengthsRows: [],
+  };
+}
+
+// A school loaded from a backend that hasn't been upgraded yet (or a JSON
+// export taken before this pass) still carries the OLD shape: a single
+// `facultyProfile` object plus five school-level row arrays. Convert that
+// into today's `facultyProfiles` array so existing data isn't stranded.
+// A no-op once the school already has the new array (including an empty
+// one), so it's safe to run on every read. Same style as the legacy
+// grade/section handling in splitGradeSection() above.
+function migrateFacultyProfile(data) {
+  if (!data || Array.isArray(data.facultyProfiles)) return data;
+  const legacy = data.facultyProfile;
+  const legacyStats = data.facultyStatsRows || [];
+  const legacyExpertise = data.facultyExpertiseRows || [];
+  const legacyTeaching = data.facultyTeachingRows || [];
+  const legacyTools = data.facultyToolsRows || [];
+  const legacyStrengths = data.facultyStrengthsRows || [];
+  const hasLegacyData =
+    legacy &&
+    (legacy.name || legacy.title || legacy.photo || legacy.quote ||
+      legacyStats.length || legacyExpertise.length || legacyTeaching.length ||
+      legacyTools.length || legacyStrengths.length);
+
+  if (!hasLegacyData) {
+    return { ...data, facultyProfiles: [] };
+  }
+
+  const migrated = {
+    ...blankFacultyProfile(),
+    name: legacy.name || "",
+    title: legacy.title || "",
+    photo: legacy.photo || "",
+    topBadge: legacy.topBadge || "CYBERBOTS CERTIFIED FACULTY",
+    bottomSeal: legacy.bottomSeal || "CYBERBOTS CERTIFIED EXPERT FACULTY",
+    tagline: legacy.tagline || "EMPOWERING STUDENTS THROUGH ROBOTICS  •  AI  •  INNOVATION  •  SKILLS",
+    quote: legacy.quote || "",
+    contactPhone: legacy.contactPhone || "",
+    contactEmail: legacy.contactEmail || "",
+    contactWebsite: legacy.contactWebsite || "",
+    contactLocation: legacy.contactLocation || "",
+    signatoryName: legacy.signatoryName || "",
+    signatoryTitle: legacy.signatoryTitle || "",
+    signatoryCompany: legacy.signatoryCompany || "",
+    signaturePhoto: legacy.signaturePhoto || "",
+    statsRows: legacyStats,
+    expertiseRows: legacyExpertise,
+    teachingRows: legacyTeaching,
+    toolsRows: legacyTools,
+    strengthsRows: legacyStrengths,
+  };
+
+  return { ...data, facultyProfiles: [migrated] };
+}
+
+// ─── FACULTY PHOTO EDITOR — same pattern as LogoEditor, writes to one
+// faculty member's `photo` field. Takes plain `photo`/`name` values plus a
+// `facultyId` (rather than the whole school) so the same component works
+// no matter which member is currently selected in FacultyProfileTab.
+//
+// BACKEND NOTE: uploadFacultyPhoto/deleteFacultyPhoto need a facultyId
+// argument threaded through to the server (mirroring uploadMediaPhotos'
+// `{ rowId, rowIndex }`) so the upload lands on the right array entry —
+// see the MULTI-FACULTY PROFILE comment near the top of this file.
+function FacultyPhotoEditor({ school, facultyId, photo, name, onLocalChange, onSchoolUpdated, flashToast, dirty }) {
   const [urlText, setUrlText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const fp = school.facultyProfile || {};
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -1116,7 +1670,7 @@ function FacultyPhotoEditor({ school, update, onSchoolUpdated, flashToast, dirty
     setBusy(true);
     setError("");
     try {
-      const res = await uploadFacultyPhoto(school._id, file);
+      const res = await uploadFacultyPhoto(school._id, facultyId, file);
       onSchoolUpdated(res.data);
       flashToast("Faculty photo uploaded");
     } catch (err) {
@@ -1130,7 +1684,7 @@ function FacultyPhotoEditor({ school, update, onSchoolUpdated, flashToast, dirty
     if (dirty) return;
     if (!window.confirm("Remove this photo? This cannot be undone.")) return;
     try {
-      const res = await deleteFacultyPhoto(school._id);
+      const res = await deleteFacultyPhoto(school._id, facultyId);
       onSchoolUpdated(res.data);
       flashToast("Faculty photo removed");
     } catch (err) {
@@ -1141,12 +1695,12 @@ function FacultyPhotoEditor({ school, update, onSchoolUpdated, flashToast, dirty
   const applyUrl = () => {
     const v = urlText.trim();
     if (!v) return;
-    update({ ...school, facultyProfile: { ...fp, photo: v } });
+    onLocalChange(v);
     setUrlText("");
     setError("");
   };
 
-  const photoSrc = resolveLogoSrc(fp.photo);
+  const photoSrc = resolveLogoSrc(photo);
 
   return (
     <div className="logo-row">
@@ -1163,10 +1717,10 @@ function FacultyPhotoEditor({ school, update, onSchoolUpdated, flashToast, dirty
         ) : (
           <div className="logo-btn-row">
             <label className="btn-primary-sm logo-upload">
-              {busy ? "Uploading…" : fp.photo ? "Replace image" : "Upload image"}
-              <input type="file" accept="image/*" onChange={handleFile} disabled={busy} aria-label="Upload faculty photo" />
+              {busy ? "Uploading…" : photo ? "Replace image" : "Upload image"}
+              <input type="file" accept="image/*" onChange={handleFile} disabled={busy} aria-label={`Upload photo for ${name || "this faculty member"}`} />
             </label>
-            {fp.photo && (
+            {photo && (
               <button className="btn-ghost-sm" onClick={handleRemove}>Remove photo</button>
             )}
           </div>
@@ -1193,14 +1747,15 @@ function FacultyPhotoEditor({ school, update, onSchoolUpdated, flashToast, dirty
 }
 
 // ─── SIGNATURE IMAGE EDITOR — same pattern as FacultyPhotoEditor, writes to
-// school.facultyProfile.signaturePhoto via uploadSignaturePhoto /
-// deleteSignaturePhoto. Shown as a small preview rather than a circular
-// photo, since a signature isn't a headshot.
-function SignaturePhotoEditor({ school, update, onSchoolUpdated, flashToast, dirty }) {
+// one faculty member's `signaturePhoto` field. Shown as a small preview
+// rather than a circular photo, since a signature isn't a headshot.
+//
+// BACKEND NOTE: same facultyId threading requirement as FacultyPhotoEditor
+// above applies to uploadSignaturePhoto/deleteSignaturePhoto.
+function SignaturePhotoEditor({ school, facultyId, signaturePhoto, signatoryName, onLocalChange, onSchoolUpdated, flashToast, dirty }) {
   const [urlText, setUrlText] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const fp = school.facultyProfile || {};
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -1210,7 +1765,7 @@ function SignaturePhotoEditor({ school, update, onSchoolUpdated, flashToast, dir
     setBusy(true);
     setError("");
     try {
-      const res = await uploadSignaturePhoto(school._id, file);
+      const res = await uploadSignaturePhoto(school._id, facultyId, file);
       onSchoolUpdated(res.data);
       flashToast("Signature image uploaded");
     } catch (err) {
@@ -1224,7 +1779,7 @@ function SignaturePhotoEditor({ school, update, onSchoolUpdated, flashToast, dir
     if (dirty) return;
     if (!window.confirm("Remove this signature image? This cannot be undone.")) return;
     try {
-      const res = await deleteSignaturePhoto(school._id);
+      const res = await deleteSignaturePhoto(school._id, facultyId);
       onSchoolUpdated(res.data);
       flashToast("Signature image removed");
     } catch (err) {
@@ -1235,12 +1790,12 @@ function SignaturePhotoEditor({ school, update, onSchoolUpdated, flashToast, dir
   const applyUrl = () => {
     const v = urlText.trim();
     if (!v) return;
-    update({ ...school, facultyProfile: { ...fp, signaturePhoto: v } });
+    onLocalChange(v);
     setUrlText("");
     setError("");
   };
 
-  const sigSrc = resolveLogoSrc(fp.signaturePhoto);
+  const sigSrc = resolveLogoSrc(signaturePhoto);
 
   return (
     <div className="logo-row">
@@ -1263,10 +1818,10 @@ function SignaturePhotoEditor({ school, update, onSchoolUpdated, flashToast, dir
         ) : (
           <div className="logo-btn-row">
             <label className="btn-primary-sm logo-upload">
-              {busy ? "Uploading…" : fp.signaturePhoto ? "Replace image" : "Upload image"}
-              <input type="file" accept="image/*" onChange={handleFile} disabled={busy} aria-label="Upload signature image" />
+              {busy ? "Uploading…" : signaturePhoto ? "Replace image" : "Upload image"}
+              <input type="file" accept="image/*" onChange={handleFile} disabled={busy} aria-label={`Upload signature for ${signatoryName || "this faculty member"}`} />
             </label>
-            {fp.signaturePhoto && (
+            {signaturePhoto && (
               <button className="btn-ghost-sm" onClick={handleRemove}>Remove signature</button>
             )}
           </div>
@@ -1524,97 +2079,190 @@ function CredentialsTab({ school, flashToast }) {
 
 // ─── FACULTY PROFILE TAB ─────────────────────────────────────────────────
 //
-// Drives school.facultyProfile (scalar bio/contact/certification fields,
-// via a form + FacultyPhotoEditor) plus the five list-shaped sections of
-// the card, each rendered with the same generic EditableTable every other
-// sheet in this file already uses. Field labels below intentionally match
-// what's printed on the source faculty-profile image, per the request to
-// keep admin-facing field names aligned with it.
+// Drives school.facultyProfiles — an ARRAY of faculty members, each with
+// its own scalar bio/contact/certification fields (via a form +
+// FacultyPhotoEditor) plus its own five list-shaped sections of the card,
+// each rendered with the same generic EditableTable every other sheet in
+// this file already uses. A tab strip along the top (reusing the same
+// pill styling as CompletionEditor's grade tabs, see the "wbc-" CSS
+// classes) lets the admin switch between faculty members, add a new one,
+// or delete the one currently selected. Field labels below intentionally
+// match what's printed on the source faculty-profile image, per the
+// original request to keep admin-facing field names aligned with it.
 function FacultyProfileTab({ school, update, onSchoolUpdated, flashToast, dirty }) {
-  const fp = school.facultyProfile || {};
-  const setFp = (key, val) => update({ ...school, facultyProfile: { ...fp, [key]: val } });
+  const list = school.facultyProfiles || [];
+  const [selectedIndex, setSelectedIndex] = useState(list.length > 0 ? 0 : -1);
+
+  // Keep a valid selection as faculty members are added/removed, or when a
+  // freshly-loaded school's list shows up after this component is already
+  // mounted (e.g. switching schools without unmounting the tab).
+  useEffect(() => {
+    if (list.length === 0) {
+      if (selectedIndex !== -1) setSelectedIndex(-1);
+      return;
+    }
+    if (selectedIndex < 0 || selectedIndex >= list.length) setSelectedIndex(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.length]);
+
+  const setList = (nextList) => update({ ...school, facultyProfiles: nextList });
+
+  const addFaculty = () => {
+    const next = [...list, blankFacultyProfile()];
+    setList(next);
+    setSelectedIndex(next.length - 1);
+  };
+
+  const removeFaculty = (index) => {
+    const person = list[index];
+    if (!window.confirm(`Remove ${person?.name?.trim() || "this faculty member"} from the Faculty Profile page? This cannot be undone.`)) {
+      return;
+    }
+    setList(list.filter((_, i) => i !== index));
+  };
+
+  const updateEntry = (index, patch) => {
+    const next = list.slice();
+    next[index] = { ...next[index], ...patch };
+    setList(next);
+  };
+
+  const entry = selectedIndex >= 0 ? list[selectedIndex] : null;
 
   return (
     <div>
       <div className="table-hint">
-        This drives the faculty profile card shown on this school's dashboard. Field names below match the source
-        profile layout — stat labels, expertise skills, teaching-expertise checklist items, tools & technologies,
-        and key strengths are each their own row so they're easy to reorder, add to, or remove.
+        This drives the faculty profile page shown on this school's dashboard — add one card per faculty member.
+        Field names below match the source profile layout — stat labels, expertise skills, teaching-expertise
+        checklist items, tools & technologies, and key strengths are each their own row so they're easy to
+        reorder, add to, or remove.
       </div>
 
-      <h3 className="subhead" style={{ marginTop: 0 }}>Photo</h3>
-      <FacultyPhotoEditor school={school} update={update} onSchoolUpdated={onSchoolUpdated} flashToast={flashToast} dirty={dirty} />
-
-      <h3 className="subhead">Identity</h3>
-      <div className="form-grid">
-        <TextField label="Name" value={fp.name} onChange={(v) => setFp("name", v)} />
-        <TextField label="Title / Role (e.g. Senior Research Analyst)" value={fp.title} onChange={(v) => setFp("title", v)} />
+      <div className="wbc-grade-tabs">
+        {list.length === 0 && <span className="wbc-empty-note">No faculty members added yet — add one below.</span>}
+        {list.map((f, i) => (
+          <button
+            key={f.id || i}
+            type="button"
+            className={`wbc-grade-tab${selectedIndex === i ? " active" : ""}`}
+            onClick={() => setSelectedIndex(i)}
+          >
+            {f.name?.trim() || `Faculty ${i + 1}`}
+          </button>
+        ))}
       </div>
 
-      <h3 className="subhead">Stats</h3>
-      <EditableTable
-        def={TABLES.facultyStatsRows}
-        rows={school.facultyStatsRows}
-        onChange={(rows) => update({ ...school, facultyStatsRows: rows })}
-      />
-
-      <h3 className="subhead">Expertise</h3>
-      <EditableTable
-        def={TABLES.facultyExpertiseRows}
-        rows={school.facultyExpertiseRows}
-        onChange={(rows) => update({ ...school, facultyExpertiseRows: rows })}
-      />
-
-      <h3 className="subhead">Teaching Expertise</h3>
-      <EditableTable
-        def={TABLES.facultyTeachingRows}
-        rows={school.facultyTeachingRows}
-        onChange={(rows) => update({ ...school, facultyTeachingRows: rows })}
-      />
-
-      <h3 className="subhead">Tools & Technologies</h3>
-      <EditableTable
-        def={TABLES.facultyToolsRows}
-        rows={school.facultyToolsRows}
-        onChange={(rows) => update({ ...school, facultyToolsRows: rows })}
-      />
-
-      <h3 className="subhead">Key Strengths</h3>
-      <EditableTable
-        def={TABLES.facultyStrengthsRows}
-        rows={school.facultyStrengthsRows}
-        onChange={(rows) => update({ ...school, facultyStrengthsRows: rows })}
-      />
-
-      <h3 className="subhead">Quote</h3>
-      <div className="form-grid">
-        <TextField label="Quote" type="textarea" value={fp.quote} onChange={(v) => setFp("quote", v)} />
+      <div className="wbc-add-grade">
+        <button type="button" className="btn-ghost-sm" onClick={addFaculty}>
+          + Add faculty member
+        </button>
       </div>
 
-      <h3 className="subhead">Contact</h3>
-      <div className="form-grid">
-        <TextField label="Phone" value={fp.contactPhone} onChange={(v) => setFp("contactPhone", v)} />
-        <TextField label="Email" value={fp.contactEmail} onChange={(v) => setFp("contactEmail", v)} />
-        <TextField label="Website" value={fp.contactWebsite} onChange={(v) => setFp("contactWebsite", v)} />
-        <TextField label="Location" value={fp.contactLocation} onChange={(v) => setFp("contactLocation", v)} />
-      </div>
+      {entry ? (
+        <>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <button type="button" className="btn-ghost-sm" onClick={() => removeFaculty(selectedIndex)}>
+              Delete this faculty member
+            </button>
+          </div>
 
-      <h3 className="subhead">Signatory</h3>
-      <div className="form-grid">
-        <TextField label="Signatory name (e.g. R. Karthik)" value={fp.signatoryName} onChange={(v) => setFp("signatoryName", v)} />
-        <TextField label="Signatory title (e.g. Managing Director)" value={fp.signatoryTitle} onChange={(v) => setFp("signatoryTitle", v)} />
-        <TextField label="Signatory company" value={fp.signatoryCompany} onChange={(v) => setFp("signatoryCompany", v)} />
-      </div>
+          <h3 className="subhead" style={{ marginTop: 0 }}>Photo</h3>
+          <FacultyPhotoEditor
+            school={school}
+            facultyId={entry.id}
+            photo={entry.photo}
+            name={entry.name}
+            onLocalChange={(v) => updateEntry(selectedIndex, { photo: v })}
+            onSchoolUpdated={onSchoolUpdated}
+            flashToast={flashToast}
+            dirty={dirty}
+          />
 
-      <h3 className="subhead">Signature image</h3>
-      <SignaturePhotoEditor school={school} update={update} onSchoolUpdated={onSchoolUpdated} flashToast={flashToast} dirty={dirty} />
+          <h3 className="subhead">Identity</h3>
+          <div className="form-grid">
+            <TextField label="Name" value={entry.name} onChange={(v) => updateEntry(selectedIndex, { name: v })} />
+            <TextField label="Title / Role (e.g. Senior Research Analyst)" value={entry.title} onChange={(v) => updateEntry(selectedIndex, { title: v })} />
+          </div>
 
-      <h3 className="subhead">Certification text</h3>
-      <div className="form-grid">
-        <TextField label="Top ribbon badge" value={fp.topBadge} onChange={(v) => setFp("topBadge", v)} />
-        <TextField label="Bottom seal text" value={fp.bottomSeal} onChange={(v) => setFp("bottomSeal", v)} />
-        <TextField label="Footer tagline" value={fp.tagline} onChange={(v) => setFp("tagline", v)} />
-      </div>
+          <h3 className="subhead">Stats</h3>
+          <EditableTable
+            def={FACULTY_TABLE_DEFS.statsRows}
+            rows={entry.statsRows}
+            onChange={(rows) => updateEntry(selectedIndex, { statsRows: rows })}
+          />
+
+          <h3 className="subhead">Expertise</h3>
+          <EditableTable
+            def={FACULTY_TABLE_DEFS.expertiseRows}
+            rows={entry.expertiseRows}
+            onChange={(rows) => updateEntry(selectedIndex, { expertiseRows: rows })}
+          />
+
+          <h3 className="subhead">Teaching Expertise</h3>
+          <EditableTable
+            def={FACULTY_TABLE_DEFS.teachingRows}
+            rows={entry.teachingRows}
+            onChange={(rows) => updateEntry(selectedIndex, { teachingRows: rows })}
+          />
+
+          <h3 className="subhead">Tools & Technologies</h3>
+          <EditableTable
+            def={FACULTY_TABLE_DEFS.toolsRows}
+            rows={entry.toolsRows}
+            onChange={(rows) => updateEntry(selectedIndex, { toolsRows: rows })}
+          />
+
+          <h3 className="subhead">Key Strengths</h3>
+          <EditableTable
+            def={FACULTY_TABLE_DEFS.strengthsRows}
+            rows={entry.strengthsRows}
+            onChange={(rows) => updateEntry(selectedIndex, { strengthsRows: rows })}
+          />
+
+          <h3 className="subhead">Quote</h3>
+          <div className="form-grid">
+            <TextField label="Quote" type="textarea" value={entry.quote} onChange={(v) => updateEntry(selectedIndex, { quote: v })} />
+          </div>
+
+          <h3 className="subhead">Contact</h3>
+          <div className="form-grid">
+            <TextField label="Phone" value={entry.contactPhone} onChange={(v) => updateEntry(selectedIndex, { contactPhone: v })} />
+            <TextField label="Email" value={entry.contactEmail} onChange={(v) => updateEntry(selectedIndex, { contactEmail: v })} />
+            <TextField label="Website" value={entry.contactWebsite} onChange={(v) => updateEntry(selectedIndex, { contactWebsite: v })} />
+            <TextField label="Location" value={entry.contactLocation} onChange={(v) => updateEntry(selectedIndex, { contactLocation: v })} />
+          </div>
+
+          <h3 className="subhead">Signatory</h3>
+          <div className="form-grid">
+            <TextField label="Signatory name (e.g. R. Karthik)" value={entry.signatoryName} onChange={(v) => updateEntry(selectedIndex, { signatoryName: v })} />
+            <TextField label="Signatory title (e.g. Managing Director)" value={entry.signatoryTitle} onChange={(v) => updateEntry(selectedIndex, { signatoryTitle: v })} />
+            <TextField label="Signatory company" value={entry.signatoryCompany} onChange={(v) => updateEntry(selectedIndex, { signatoryCompany: v })} />
+          </div>
+
+          <h3 className="subhead">Signature image</h3>
+          <SignaturePhotoEditor
+            school={school}
+            facultyId={entry.id}
+            signaturePhoto={entry.signaturePhoto}
+            signatoryName={entry.signatoryName}
+            onLocalChange={(v) => updateEntry(selectedIndex, { signaturePhoto: v })}
+            onSchoolUpdated={onSchoolUpdated}
+            flashToast={flashToast}
+            dirty={dirty}
+          />
+
+          <h3 className="subhead">Certification text</h3>
+          <div className="form-grid">
+            <TextField label="Top ribbon badge" value={entry.topBadge} onChange={(v) => updateEntry(selectedIndex, { topBadge: v })} />
+            <TextField label="Bottom seal text" value={entry.bottomSeal} onChange={(v) => updateEntry(selectedIndex, { bottomSeal: v })} />
+            <TextField label="Footer tagline" value={entry.tagline} onChange={(v) => updateEntry(selectedIndex, { tagline: v })} />
+          </div>
+        </>
+      ) : (
+        <div className="etable-empty" style={{ border: "1px dashed #e2e8f0", borderRadius: 10, padding: 20 }}>
+          No faculty members yet — click "+ Add faculty member" to create the first profile card.
+        </div>
+      )}
     </div>
   );
 }
@@ -2228,7 +2876,10 @@ export default function AdminPanel({ userEmail, onLogout }) {
         } catch { /* ignore */ }
       }
 
-      setSchool(res.data);
+      // MULTI-FACULTY: a backend not yet upgraded to the facultyProfiles
+      // array shape returns the old single-object shape — migrate on read
+      // so existing schools don't lose their Faculty Profile data.
+      setSchool(migrateFacultyProfile(res.data));
       setSelectedId(id);
       setDirty(false);
       setTab(restoreOk ? restoreTab : "overview");
@@ -2283,7 +2934,7 @@ export default function AdminPanel({ userEmail, onLogout }) {
   };
 
   const applyServerUpdate = (updatedSchool) => {
-    setSchool(updatedSchool);
+    setSchool(migrateFacultyProfile(updatedSchool));
     setIndex((idx) => idx.map((s) => (s._id === updatedSchool._id ? { _id: updatedSchool._id, name: updatedSchool.name } : s)));
   };
 
@@ -2318,7 +2969,7 @@ export default function AdminPanel({ userEmail, onLogout }) {
       // loaded with — the server compares it and answers 409 if someone
       // else saved the school in the meantime (handled in the catch below).
       const res = await apiUpdateSchool(current._id, current);
-      setSchool(res.data);
+      setSchool(migrateFacultyProfile(res.data));
       setIndex((idx) => idx.map((s) => (s._id === current._id ? { _id: current._id, name: res.data.name } : s)));
       setDirty(false);
       flashToast("Saved");
@@ -2372,7 +3023,7 @@ export default function AdminPanel({ userEmail, onLogout }) {
       setShowNewModal(false);
       setNewName("");
       setSelectedId(res.data._id);
-      setSchool(res.data);
+      setSchool(migrateFacultyProfile(res.data));
       setDirty(false);
       setTab("overview");
       flashToast("School created");
@@ -2423,7 +3074,10 @@ export default function AdminPanel({ userEmail, onLogout }) {
       const parsed = JSON.parse(importText);
 
       // FIX (kept): strip cross-school uploaded assets on import.
-      const sanitized = { ...parsed };
+      // MULTI-FACULTY: migrate an export taken before this pass (single
+      // facultyProfile object + five flat arrays) into today's
+      // facultyProfiles array BEFORE sanitizing it below.
+      const sanitized = { ...migrateFacultyProfile(parsed) };
       if (Array.isArray(sanitized.mediaRows)) {
         // PHASE 1: strip cross-school uploaded photos AND re-stamp fresh
         // rowIds, so an imported row can never carry another school's row
@@ -2436,19 +3090,17 @@ export default function AdminPanel({ userEmail, onLogout }) {
       if (typeof sanitized.logo === "string" && sanitized.logo.startsWith("/uploads/")) {
         sanitized.logo = "";
       }
-      // Uploaded faculty photos (and the signature image) are per-school
-      // too, same rule as the logo.
-      if (sanitized.facultyProfile) {
-        const fpPatch = {};
-        if (typeof sanitized.facultyProfile.photo === "string" && sanitized.facultyProfile.photo.startsWith("/uploads/")) {
-          fpPatch.photo = "";
-        }
-        if (typeof sanitized.facultyProfile.signaturePhoto === "string" && sanitized.facultyProfile.signaturePhoto.startsWith("/uploads/")) {
-          fpPatch.signaturePhoto = "";
-        }
-        if (Object.keys(fpPatch).length > 0) {
-          sanitized.facultyProfile = { ...sanitized.facultyProfile, ...fpPatch };
-        }
+      // Uploaded faculty photos (and signature images) are per-school too,
+      // same rule as the logo — strip them and re-stamp a fresh id per
+      // faculty member so an imported entry can never carry another
+      // school's upload or row identity.
+      if (Array.isArray(sanitized.facultyProfiles)) {
+        sanitized.facultyProfiles = sanitized.facultyProfiles.map((person) => {
+          const next = { ...person, id: newRowId() };
+          if (typeof next.photo === "string" && next.photo.startsWith("/uploads/")) next.photo = "";
+          if (typeof next.signaturePhoto === "string" && next.signaturePhoto.startsWith("/uploads/")) next.signaturePhoto = "";
+          return next;
+        });
       }
 
       const merged = {
@@ -2615,6 +3267,12 @@ export default function AdminPanel({ userEmail, onLogout }) {
   // ACCESS: per-tab data badge — how many entries each section holds.
   const tabCount = (id) => {
     if (!school) return null;
+    // CHANGED — the Faculty Profile tab now counts faculty MEMBERS
+    // (school.facultyProfiles.length), not a row count on a field named
+    // "facultyProfile" (that field no longer exists on the school).
+    if (id === "facultyProfile") {
+      return Array.isArray(school.facultyProfiles) ? school.facultyProfiles.length : 0;
+    }
     const v = school[id];
     if (Array.isArray(v)) return v.length;
     // CHANGED — worksheetCompletionData counts by grade, same as
@@ -2807,10 +3465,10 @@ export default function AdminPanel({ userEmail, onLogout }) {
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
         .field { display: flex; flex-direction: column; gap: 5px; }
         .field-label { font-size: 11.5px; font-weight: 600; color: #475569; }
-        .field input, .field textarea, .a-panel input[type=text], .a-panel input[type=number], .a-panel input[type=password] {
-          border: 1px solid #e2e8f0; border-radius: 7px; padding: 8px 10px; font-size: 13px; color: #1e293b; outline: none; font-family: inherit;
+        .field input, .field textarea, .field select, .a-panel input[type=text], .a-panel input[type=number], .a-panel input[type=password] {
+          border: 1px solid #e2e8f0; border-radius: 7px; padding: 8px 10px; font-size: 13px; color: #1e293b; outline: none; font-family: inherit; background: #fff;
         }
-        .field input:focus, .field textarea:focus { border-color: #818cf8; }
+        .field input:focus, .field textarea:focus, .field select:focus { border-color: #818cf8; }
 
         /* VALIDATION: invalid numeric values get a red border + message;
            unreadable legacy dates get an amber "kept as typed" note. */
@@ -2914,6 +3572,10 @@ export default function AdminPanel({ userEmail, onLogout }) {
 
         .a-modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
         .a-modal { background: #fff; border-radius: 14px; padding: 24px; width: 340px; max-width: calc(100vw - 32px); }
+        /* BULK IMPORT: the Import Rows dialog needs room for mapping/preview
+           tables — wider and scrollable, unlike the compact New School /
+           Delete confirmation dialogs above. */
+        .a-modal-wide { width: 760px; max-width: calc(100vw - 32px); max-height: calc(100vh - 64px); overflow-y: auto; }
         .a-modal h3 { font-size: 15px; color: #0f172a; margin-bottom: 14px; }
         .a-modal input { width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 9px 11px; font-size: 13px; margin-bottom: 16px; outline: none; }
         .a-modal input:focus { border-color: #818cf8; }

@@ -43,31 +43,14 @@ function defaultContent(name, grades) {
     expoRows: [],
     facultyObservationRows: [],
     workAccomplishmentRows: [],
-    // NEW — Faculty Profile: the infographic-style faculty card. See
-    // models/School.js for the full field list; blank here on purpose so
-    // an admin builds it per school the same way every other sheet works.
-    facultyProfile: {
-      name: "",
-      title: "",
-      photo: "",
-      topBadge: "CYBERBOTS CERTIFIED FACULTY",
-      bottomSeal: "CYBERBOTS CERTIFIED EXPERT FACULTY",
-      tagline: "EMPOWERING STUDENTS THROUGH ROBOTICS  •  AI  •  INNOVATION  •  SKILLS",
-      quote: "",
-      contactPhone: "",
-      contactEmail: "",
-      contactWebsite: "",
-      contactLocation: "",
-      signatoryName: "",
-      signatoryTitle: "",
-      signatoryCompany: "",
-      signaturePhoto: "",
-    },
-    facultyStatsRows: [],
-    facultyExpertiseRows: [],
-    facultyTeachingRows: [],
-    facultyToolsRows: [],
-    facultyStrengthsRows: [],
+    // CHANGED — Faculty Profile now supports MULTIPLE faculty members.
+    // Was a single `facultyProfile` object + five school-level flat row
+    // arrays; now an ARRAY, blank on purpose — an admin adds one card per
+    // faculty member from AdminPanel's Faculty Profile tab, exactly like
+    // every other repeating sheet in this app (deliverables, workbookRows,
+    // etc. all start empty too). See models/School.js for the field
+    // comment and the entry shape.
+    facultyProfiles: [],
     // Every sheet on by default for a fresh school; the admin can untick
     // any of them from the Overview tab once real data tells them a sheet
     // doesn't apply to this school.
@@ -101,9 +84,15 @@ function defaultContent(name, grades) {
 // Workbooks-applicability flag or its entire Worksheet Completion grid is
 // silently dropped and never reaches the database.
 //
-// NOTE (Faculty Profile): same rule applies to "facultyProfile" and its
-// five *Rows arrays below — all six MUST be listed here or AdminPanel's
-// Faculty Profile tab will appear to save but silently lose data.
+// NOTE (Faculty Profile / MULTI-FACULTY): "facultyProfiles" MUST be in
+// this list — same silent-drop trap as above. This used to be six separate
+// fields ("facultyProfile" plus five *Rows arrays); they've been replaced
+// by this one array field, since each faculty member now carries its own
+// copy of those five row arrays instead of the school carrying one shared
+// copy. If you're mid-rollout and some clients may still send the OLD six
+// fields, you can list them here too (pickWritable only copies keys that
+// are actually present in the request body, so harmless either way) — but
+// nothing in this backend reads them anymore.
 const WRITABLE_FIELDS = [
   "name", "logo", "faculty", "year", "grades", "totalStudents",
   "lastUpdatedOn", "lastUpdatedBy", "lastReviewedOn", "lastReviewedBy",
@@ -115,8 +104,7 @@ const WRITABLE_FIELDS = [
   "stemRows", "workdoneRows",
   "mediaRows", "assessmentRows", "reportCardRows", "eventRows",
   "expoRows", "facultyObservationRows", "workAccomplishmentRows",
-  "facultyProfile", "facultyStatsRows", "facultyExpertiseRows",
-  "facultyTeachingRows", "facultyToolsRows", "facultyStrengthsRows",
+  "facultyProfiles",
   "enabledSections",
 ];
 
@@ -172,6 +160,24 @@ function findMediaRowIndex(school, body = {}) {
   }
   const idx = Number(body.rowIndex);
   return Number.isInteger(idx) && rows[idx] ? idx : -1;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+//  MULTI-FACULTY: resolve which entry in school.facultyProfiles an
+//  upload/delete refers to, by its stable `id` (stamped client-side in
+//  AdminPanel's blankFacultyProfile(), auto-healed server-side in
+//  updateSchool below for anything that somehow arrives without one).
+//
+//  Unlike findMediaRowIndex above there's no positional fallback — a
+//  faculty member's id is always present once they've been added and
+//  saved at least once, and falling back to array position would risk
+//  attaching a photo to the wrong person's card if two admins are editing
+//  the same school's faculty list at once.
+// ────────────────────────────────────────────────────────────────────────────
+function findFacultyIndex(school, facultyId) {
+  const list = Array.isArray(school.facultyProfiles) ? school.facultyProfiles : [];
+  if (!facultyId) return -1;
+  return list.findIndex((f) => f && f.id === facultyId);
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -284,6 +290,11 @@ const getSchoolById = async (req, res) => {
 //  gets one stamped here. The migration script covers existing documents;
 //  this covers documents touched by older clients afterwards, so every
 //  SAVED media row is always addressable by rowId.
+//
+//  MULTI-FACULTY — same auto-heal for facultyProfiles: any incoming entry
+//  missing an `id` gets one stamped here, so every SAVED faculty member is
+//  always addressable by id (the same guarantee findFacultyIndex above
+//  relies on for photo/signature uploads).
 // ────────────────────────────────────────────────────────────────────────────
 const updateSchool = async (req, res) => {
   try {
@@ -294,6 +305,14 @@ const updateSchool = async (req, res) => {
         row && typeof row === "object" && !row.rowId
           ? { ...row, rowId: crypto.randomUUID() }
           : row
+      );
+    }
+
+    if (Array.isArray(updates.facultyProfiles)) {
+      updates.facultyProfiles = updates.facultyProfiles.map((person) =>
+        person && typeof person === "object" && !person.id
+          ? { ...person, id: crypto.randomUUID() }
+          : person
       );
     }
 
@@ -309,6 +328,11 @@ const updateSchool = async (req, res) => {
     console.log("[BE:updateSchool] req.body.worksheetCompletionData  keys =", req.body.worksheetCompletionData ? Object.keys(req.body.worksheetCompletionData) : req.body.worksheetCompletionData);
     console.log("[BE:updateSchool] updates.workbooks                 =", updates.workbooks);
     console.log("[BE:updateSchool] updates.worksheetCompletionData keys =", updates.worksheetCompletionData ? Object.keys(updates.worksheetCompletionData) : updates.worksheetCompletionData);
+
+    // [DEBUG] Same trace for the multi-faculty-profile change — remove
+    // once confirmed the Faculty Profile tab persists more than one entry.
+    console.log("[BE:updateSchool] req.body.facultyProfiles length =", Array.isArray(req.body.facultyProfiles) ? req.body.facultyProfiles.length : req.body.facultyProfiles);
+    console.log("[BE:updateSchool] updates.facultyProfiles length   =", Array.isArray(updates.facultyProfiles) ? updates.facultyProfiles.length : updates.facultyProfiles);
 
     const filter = { _id: req.params.id, isActive: true };
     const expected = req.body.updatedAt ? new Date(req.body.updatedAt) : null;
@@ -339,6 +363,7 @@ const updateSchool = async (req, res) => {
     console.log("[BE:updateSchool] saved doc enabledSections  =", school.enabledSections);
     console.log("[BE:updateSchool] saved doc workbooks                =", school.workbooks);
     console.log("[BE:updateSchool] saved doc worksheetCompletionData keys =", school.worksheetCompletionData ? Object.keys(school.worksheetCompletionData) : school.worksheetCompletionData);
+    console.log("[BE:updateSchool] saved doc facultyProfiles length =", Array.isArray(school.facultyProfiles) ? school.facultyProfiles.length : school.facultyProfiles);
 
     return res.status(200).json({ success: true, message: "School updated", data: school });
   } catch (error) {
@@ -620,10 +645,16 @@ const deleteSchoolLogo = async (req, res) => {
 
 // ────────────────────────────────────────────────────────────────────────────
 //  POST /api/schools/:id/faculty-photo   (admin only)
-//  Same shape as uploadSchoolLogo above, writing to
-//  school.facultyProfile.photo instead of school.logo. facultyProfile is a
-//  Mixed field, so markModified is required — Mongoose can't see into a
-//  plain-object mutation on a Mixed field on its own.
+//
+//  MULTI-FACULTY: writes to ONE entry of school.facultyProfiles — which
+//  entry is resolved via findFacultyIndex(school, req.body.facultyId).
+//  `facultyId` is a plain form field alongside the uploaded file (multer
+//  parses it into req.body same as it already does for media's
+//  rowId/rowIndex), sent by AdminPanel's FacultyPhotoEditor as
+//  `entry.id` — see uploadFacultyPhoto in api/schoolApi.js on the
+//  frontend. facultyProfiles is a Mixed field, so markModified is
+//  required — Mongoose can't see into an array-element mutation on a
+//  Mixed field on its own.
 // ────────────────────────────────────────────────────────────────────────────
 const uploadFacultyPhoto = async (req, res) => {
   try {
@@ -636,7 +667,17 @@ const uploadFacultyPhoto = async (req, res) => {
       return res.status(400).json({ success: false, message: "No photo file was uploaded" });
     }
 
-    const current = school.facultyProfile || {};
+    const index = findFacultyIndex(school, req.body.facultyId);
+    if (index === -1) {
+      return res.status(400).json({
+        success: false,
+        message: "Faculty member not found — save this faculty member before uploading a photo",
+      });
+    }
+
+    const list = (Array.isArray(school.facultyProfiles) ? school.facultyProfiles : []).slice();
+    const current = list[index] || {};
+
     if (isLocalFacultyPhotoPath(current.photo, school._id)) {
       const oldPath = path.join(FACULTY_UPLOAD_ROOT, school._id.toString(), path.basename(current.photo));
       fs.unlink(oldPath, (err) => {
@@ -646,8 +687,9 @@ const uploadFacultyPhoto = async (req, res) => {
       });
     }
 
-    school.facultyProfile = { ...current, photo: `/uploads/faculty/${school._id}/${req.file.filename}` };
-    school.markModified("facultyProfile");
+    list[index] = { ...current, photo: `/uploads/faculty/${school._id}/${req.file.filename}` };
+    school.facultyProfiles = list;
+    school.markModified("facultyProfiles");
     await school.save();
 
     return res.status(200).json({ success: true, message: "Faculty photo uploaded", data: school });
@@ -662,6 +704,9 @@ const uploadFacultyPhoto = async (req, res) => {
 
 // ────────────────────────────────────────────────────────────────────────────
 //  DELETE /api/schools/:id/faculty-photo   (admin only)
+//  MULTI-FACULTY: same facultyId-based lookup as the upload route above.
+//  `facultyId` arrives in the JSON body here (no file, so no multer
+//  involved — express.json() parses it same as `filename` for media).
 // ────────────────────────────────────────────────────────────────────────────
 const deleteFacultyPhoto = async (req, res) => {
   try {
@@ -670,7 +715,14 @@ const deleteFacultyPhoto = async (req, res) => {
       return res.status(404).json({ success: false, message: "School not found" });
     }
 
-    const current = school.facultyProfile || {};
+    const index = findFacultyIndex(school, req.body.facultyId);
+    if (index === -1) {
+      return res.status(400).json({ success: false, message: "Faculty member not found" });
+    }
+
+    const list = (Array.isArray(school.facultyProfiles) ? school.facultyProfiles : []).slice();
+    const current = list[index] || {};
+
     if (isLocalFacultyPhotoPath(current.photo, school._id)) {
       const oldPath = path.join(FACULTY_UPLOAD_ROOT, school._id.toString(), path.basename(current.photo));
       fs.unlink(oldPath, (err) => {
@@ -680,8 +732,9 @@ const deleteFacultyPhoto = async (req, res) => {
       });
     }
 
-    school.facultyProfile = { ...current, photo: "" };
-    school.markModified("facultyProfile");
+    list[index] = { ...current, photo: "" };
+    school.facultyProfiles = list;
+    school.markModified("facultyProfiles");
     await school.save();
 
     return res.status(200).json({ success: true, message: "Faculty photo removed", data: school });
@@ -696,8 +749,8 @@ const deleteFacultyPhoto = async (req, res) => {
 
 // ────────────────────────────────────────────────────────────────────────────
 //  POST /api/schools/:id/signature-photo   (admin only)
-//  Same shape as uploadFacultyPhoto above, writing to
-//  school.facultyProfile.signaturePhoto instead of .photo.
+//  MULTI-FACULTY: same shape as uploadFacultyPhoto above, writing to one
+//  entry's `signaturePhoto` instead of `photo`.
 // ────────────────────────────────────────────────────────────────────────────
 const uploadSignaturePhoto = async (req, res) => {
   try {
@@ -710,7 +763,17 @@ const uploadSignaturePhoto = async (req, res) => {
       return res.status(400).json({ success: false, message: "No signature file was uploaded" });
     }
 
-    const current = school.facultyProfile || {};
+    const index = findFacultyIndex(school, req.body.facultyId);
+    if (index === -1) {
+      return res.status(400).json({
+        success: false,
+        message: "Faculty member not found — save this faculty member before uploading a signature",
+      });
+    }
+
+    const list = (Array.isArray(school.facultyProfiles) ? school.facultyProfiles : []).slice();
+    const current = list[index] || {};
+
     if (isLocalSignaturePath(current.signaturePhoto, school._id)) {
       const oldPath = path.join(SIGNATURE_UPLOAD_ROOT, school._id.toString(), path.basename(current.signaturePhoto));
       fs.unlink(oldPath, (err) => {
@@ -720,8 +783,9 @@ const uploadSignaturePhoto = async (req, res) => {
       });
     }
 
-    school.facultyProfile = { ...current, signaturePhoto: `/uploads/signature/${school._id}/${req.file.filename}` };
-    school.markModified("facultyProfile");
+    list[index] = { ...current, signaturePhoto: `/uploads/signature/${school._id}/${req.file.filename}` };
+    school.facultyProfiles = list;
+    school.markModified("facultyProfiles");
     await school.save();
 
     return res.status(200).json({ success: true, message: "Signature image uploaded", data: school });
@@ -736,6 +800,7 @@ const uploadSignaturePhoto = async (req, res) => {
 
 // ────────────────────────────────────────────────────────────────────────────
 //  DELETE /api/schools/:id/signature-photo   (admin only)
+//  MULTI-FACULTY: same facultyId-based lookup as deleteFacultyPhoto above.
 // ────────────────────────────────────────────────────────────────────────────
 const deleteSignaturePhoto = async (req, res) => {
   try {
@@ -744,7 +809,14 @@ const deleteSignaturePhoto = async (req, res) => {
       return res.status(404).json({ success: false, message: "School not found" });
     }
 
-    const current = school.facultyProfile || {};
+    const index = findFacultyIndex(school, req.body.facultyId);
+    if (index === -1) {
+      return res.status(400).json({ success: false, message: "Faculty member not found" });
+    }
+
+    const list = (Array.isArray(school.facultyProfiles) ? school.facultyProfiles : []).slice();
+    const current = list[index] || {};
+
     if (isLocalSignaturePath(current.signaturePhoto, school._id)) {
       const oldPath = path.join(SIGNATURE_UPLOAD_ROOT, school._id.toString(), path.basename(current.signaturePhoto));
       fs.unlink(oldPath, (err) => {
@@ -754,8 +826,9 @@ const deleteSignaturePhoto = async (req, res) => {
       });
     }
 
-    school.facultyProfile = { ...current, signaturePhoto: "" };
-    school.markModified("facultyProfile");
+    list[index] = { ...current, signaturePhoto: "" };
+    school.facultyProfiles = list;
+    school.markModified("facultyProfiles");
     await school.save();
 
     return res.status(200).json({ success: true, message: "Signature image removed", data: school });

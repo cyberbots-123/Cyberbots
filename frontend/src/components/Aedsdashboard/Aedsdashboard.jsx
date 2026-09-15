@@ -48,16 +48,18 @@
 //                          studentCount, status, remarks)
 //   WORK ACCOMPLISHMENT .. workAccomplishmentRows[] (academicYear, date,
 //                          preparedBy, status, link)
-//   FACULTY PROFILE ...... facultyProfile { name, title, photo, topBadge,
+//   FACULTY PROFILE ...... facultyProfiles[] — ONE ENTRY PER FACULTY MEMBER
+//                          (see MULTI-FACULTY PROFILE note below). Each
+//                          entry: { id, name, title, photo, topBadge,
 //                          bottomSeal, tagline, quote, contactPhone,
 //                          contactEmail, contactWebsite, contactLocation,
-//                          signatoryName, signatoryTitle, signatoryCompany }
-//                          + facultyStatsRows[] (label, value) +
-//                          facultyExpertiseRows[] (skill, percent) +
-//                          facultyTeachingRows[] (item) + facultyToolsRows[]
-//                          (name) + facultyStrengthsRows[] (label) — the
-//                          infographic-style faculty bio card. See
-//                          FacultyProfileSection below.
+//                          signatoryName, signatoryTitle, signatoryCompany,
+//                          signaturePhoto, statsRows[] (label, value),
+//                          expertiseRows[] (skill, percent), teachingRows[]
+//                          (item), toolsRows[] (name), strengthsRows[]
+//                          (label) } — the infographic-style faculty bio
+//                          card, one per member. See FacultyProfileSection /
+//                          FacultyProfileCard below.
 //
 //   enabledSections ...... { <sheet key>: boolean } — set from AdminPanel's
 //                          Overview tab checkboxes. A sheet whose key reads
@@ -69,7 +71,7 @@
 // index tabs down the left rail; each sheet opens with a tinted hero band
 // carrying a perfboard dot-grid (a nod to the breadboards in the kit boxes).
 //
-// CHANGE LOG (this pass): the register workbook keeps its grade-wise
+// CHANGE LOG (earlier pass): the register workbook keeps its grade-wise
 // activity-completion grid on the WORKSHEETS sheet, not WORKBOOKS — and
 // WORKBOOKS itself carries an applicability flag it never had before
 // ("NOT APPLICABLE" for schools running the worksheet track instead of
@@ -87,7 +89,7 @@
 //     (GradeCompletionTable / CompletionByGrade) — Workbooks keeps reading
 //     `workbookCompletionData` for any school still using that track.
 //
-// GRADE / SECTION SPLIT + DATE FORMATTING (this pass): the completion
+// GRADE / SECTION SPLIT + DATE FORMATTING (earlier pass): the completion
 // grid's class column ("4A", "4B") is now stored as separate `grade` and
 // `section` fields (see CompletionEditor in the admin panel) — the table
 // here renders them as two columns instead of one. All dates across the
@@ -96,19 +98,31 @@
 // column shows a readable "12 Jun 2026" instead of a raw ISO string;
 // legacy free-text values that aren't ISO dates are shown exactly as saved.
 //
-// FACULTY PROFILE (this pass): a new "Faculty Profile" sheet — an
+// FACULTY PROFILE (earlier pass): a "Faculty Profile" sheet — an
 // infographic-style bio card for the faculty member assigned to this
 // school (photo, headline stats, skill bars, a teaching-expertise
 // checklist, a tools & technologies grid, a key-strengths grid, and a
 // footer with a quote, contact details, and a signatory/certification
 // block). It's a deliberately different visual register from the rest of
 // the dashboard (poster-style rather than spreadsheet-style) since that's
-// what the source card looks like — see FacultyProfileSection and the
+// what the source card looks like — see FacultyProfileCard and the
 // "fp-" prefixed styles near the end of the stylesheet below. Brand marks
 // (the CyberBots wordmark, the certification ribbon/seal) are recreated
 // with CSS rather than reproducing external logo artwork; tool icons are
 // simple monogram/emoji glyphs chosen by keyword match against the tool
 // name, with a letter-monogram fallback for anything unrecognised.
+//
+// MULTI-FACULTY PROFILE (this pass): a school can now have MORE THAN ONE
+// faculty member on its Faculty Profile page. `school.facultyProfile`
+// (single object) + five school-level row arrays became
+// `school.facultyProfiles` (array of self-contained entries, each with its
+// own `statsRows` / `expertiseRows` / `teachingRows` / `toolsRows` /
+// `strengthsRows`) — see FacultyProfileSection, which now renders one
+// FacultyProfileCard per entry, stacked vertically (".fp-stack" below).
+// legacyFacultyProfileToEntry() below carries forward a school still
+// returning the OLD single-object shape from a not-yet-upgraded backend,
+// the same way this file already tolerates legacy `kitsData` and
+// combined grade/section strings elsewhere.
 
 import { useState, useMemo, useEffect } from "react";
 import { BASE_URL } from "../../api/http";
@@ -123,7 +137,9 @@ const SECTIONS = [
   // NEW — Faculty Profile. Uses a DIFFERENT enabledSections key
   // ("facultyProfile") from the existing Faculty Observation sheet
   // ("faculty") — they're unrelated sheets that happen to share a word.
-  { id: "facultyProfile", key: "facultyProfile", label: "Faculty Profile", title: "Faculty Profile", note: "Meet the faculty", color: "#F7941D" },
+  // One nav entry still represents the whole page even though it can now
+  // show more than one faculty member's card — see FacultyProfileSection.
+  { id: "facultyProfile", key: "facultyProfile", label: "Faculty Profile", title: "Faculty Profiles", note: "Meet the team", color: "#F7941D" },
   { id: "workbooks", key: "workbooks", label: "Workbooks", title: "Books & Learning Materials", note: "Issued per grade", color: "#0779D3" },
   { id: "worksheets", key: "worksheets", label: "Worksheets", title: "Worksheets (Activity-Based)", note: "Activity completion", color: "#0D9488" },
   { id: "kits", key: "kits", label: "Kits", title: "Kits — Inventory Details", note: "Component stock", color: "#D97706" },
@@ -577,7 +593,7 @@ function FacultyPhoto({ src, name }) {
 }
 
 // Signature block — an uploaded image (e.g. the Managing Director's
-// signature) when facultyProfile.signaturePhoto is set, falling back to
+// signature) when a faculty entry's signaturePhoto is set, falling back to
 // the styled-script rendering of the signatory's name otherwise — INCLUDING
 // if the uploaded image fails to load, so a broken/removed file never
 // leaves the footer with a blank gap where a signature should be.
@@ -594,31 +610,45 @@ function SignatureBlock({ src, name }) {
   return <div className="fp-sign-script">{name}</div>;
 }
 
+// MULTI-FACULTY PROFILE: a school still returning the OLD single-object
+// shape (school.facultyProfile + five school-level row arrays, from a
+// backend not yet upgraded to facultyProfiles[]) is converted here into
+// one entry in today's array shape, so its Faculty Profile page still
+// renders instead of coming up empty. Mirrors how this file already
+// tolerates other legacy field shapes (see the CHANGE LOG at the top).
+function legacyFacultyProfileToEntry(school) {
+  const fp = school?.facultyProfile;
+  const stats = school?.facultyStatsRows || [];
+  const expertise = school?.facultyExpertiseRows || [];
+  const teaching = school?.facultyTeachingRows || [];
+  const tools = school?.facultyToolsRows || [];
+  const strengths = school?.facultyStrengthsRows || [];
+  const hasAnything =
+    fp && (fp.name || fp.title || fp.photo || fp.quote ||
+      stats.length || expertise.length || teaching.length || tools.length || strengths.length);
+  if (!hasAnything) return null;
+  return {
+    ...fp,
+    statsRows: stats,
+    expertiseRows: expertise,
+    teachingRows: teaching,
+    toolsRows: tools,
+    strengthsRows: strengths,
+  };
+}
+
 // The faculty profile card itself — an infographic-style bio, deliberately
 // styled apart from the rest of the dashboard's spreadsheet-register look
-// (see the "fp-" prefixed CSS block further down). Reads
-// school.facultyProfile (scalar fields) plus the five row arrays; renders
-// nothing for any part that has no data yet, and falls back to a single
-// EmptyState if the whole card is still blank.
-function FacultyProfileSection({ school, color }) {
-  const fp = school.facultyProfile || {};
-  const stats = school.facultyStatsRows || [];
-  const expertise = school.facultyExpertiseRows || [];
-  const teaching = school.facultyTeachingRows || [];
-  const tools = school.facultyToolsRows || [];
-  const strengths = school.facultyStrengthsRows || [];
-
-  const hasAnything =
-    fp.name || fp.title || fp.photo || fp.quote ||
-    stats.length || expertise.length || teaching.length || tools.length || strengths.length;
-
-  if (!hasAnything) {
-    return (
-      <Panel color={color} title="Faculty Profile">
-        <EmptyState label="the faculty profile" />
-      </Panel>
-    );
-  }
+// (see the "fp-" prefixed CSS block further down). Renders ONE faculty
+// member's `person` entry — FacultyProfileSection below renders one of
+// these per entry in school.facultyProfiles.
+function FacultyProfileCard({ person, color }) {
+  const fp = person || {};
+  const stats = fp.statsRows || [];
+  const expertise = fp.expertiseRows || [];
+  const teaching = fp.teachingRows || [];
+  const tools = fp.toolsRows || [];
+  const strengths = fp.strengthsRows || [];
 
   const hasFooter =
     fp.quote || fp.contactPhone || fp.contactEmail || fp.contactWebsite ||
@@ -787,6 +817,37 @@ function FacultyProfileSection({ school, color }) {
       )}
 
       {fp.tagline && <div className="fp-tagline">{fp.tagline}</div>}
+    </div>
+  );
+}
+
+// MULTI-FACULTY PROFILE: renders one FacultyProfileCard per faculty member
+// in school.facultyProfiles, stacked vertically. Falls back to the OLD
+// single-profile fields (via legacyFacultyProfileToEntry) so a school
+// whose backend hasn't been upgraded yet still shows its one existing
+// card instead of an empty state.
+function FacultyProfileSection({ school, color }) {
+  const people = useMemo(() => {
+    if (Array.isArray(school.facultyProfiles) && school.facultyProfiles.length > 0) {
+      return school.facultyProfiles;
+    }
+    const legacy = legacyFacultyProfileToEntry(school);
+    return legacy ? [legacy] : [];
+  }, [school]);
+
+  if (people.length === 0) {
+    return (
+      <Panel color={color} title="Faculty Profile">
+        <EmptyState label="the faculty profile" />
+      </Panel>
+    );
+  }
+
+  return (
+    <div className="fp-stack">
+      {people.map((person, i) => (
+        <FacultyProfileCard key={person.id || i} person={person} color={color} />
+      ))}
     </div>
   );
 }
@@ -1133,7 +1194,10 @@ export default function AEDSDashboard({ school, userEmail, onLogout, onRefresh, 
            faculty-profile design. Deliberately its own visual register
            (navy/orange, ribbon, seal) rather than the spreadsheet look
            used elsewhere on this dashboard — see the top-of-file note.
+           MULTI-FACULTY: ".fp-stack" spaces out multiple cards when a
+           school has more than one faculty member.
            ═══════════════════════════════════════════════════════════════ */
+        .fp-stack { display: flex; flex-direction: column; gap: 22px; }
         .fp-card { background: #fff; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
 
         .fp-header {
@@ -1372,7 +1436,7 @@ export default function AEDSDashboard({ school, userEmail, onLogout, onRefresh, 
                   section={active}
                   leading={<SchoolLogo school={school} size={88} radius={18} />}
                   title={school.name}
-                  subtitle="Our Crown Jewel Institution"
+                  subtitle="ACADEMIC ENRICHMENT DELIVERY SYSTEM"
                   meta={`Academic year ${school.year || "—"} · ${school.workingDays || "—"}`}
                 >
                   {delivSummary.total > 0 && (
@@ -1437,18 +1501,18 @@ export default function AEDSDashboard({ school, userEmail, onLogout, onRefresh, 
             )}
 
             {/* ═══ FACULTY PROFILE ═══════════════════════════════════
-                An infographic-style bio card for this school's faculty
-                member — photo, headline stats, expertise bars, teaching
-                checklist, tools & technologies, key strengths, and a
-                footer with quote / contact / signatory / certification
-                seal. See FacultyProfileSection above. */}
+                One or more infographic-style bio cards — photo, headline
+                stats, expertise bars, teaching checklist, tools &
+                technologies, key strengths, and a footer with quote /
+                contact / signatory / certification seal — one per faculty
+                member. See FacultyProfileSection / FacultyProfileCard. */}
             {activeId === "facultyProfile" && (
               <>
                 <Hero
                   index={activeIndex}
                   total={visibleSections.length}
                   section={active}
-                  meta="The faculty member assigned to this school — background, expertise, and the tools they teach with."
+                  meta="The faculty members assigned to this school — background, expertise, and the tools they teach with."
                 />
                 <FacultyProfileSection school={school} color={active.color} />
               </>

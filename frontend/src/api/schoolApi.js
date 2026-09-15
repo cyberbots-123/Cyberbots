@@ -10,10 +10,17 @@
 // legacy fallback for rows saved before the rowId migration ran. The server
 // prefers rowId whenever it's present.
 //
-// FACULTY PROFILE: uploadFacultyPhoto / deleteFacultyPhoto below follow the
-// exact same immediate-save pattern as uploadSchoolLogo / deleteSchoolLogo —
-// they hit the school's facultyProfile.photo field directly and are not
-// staged behind updateSchool()'s "Save changes" flow.
+// MULTI-FACULTY PROFILE: uploadFacultyPhoto / deleteFacultyPhoto /
+// uploadSignaturePhoto / deleteSignaturePhoto below all take a `facultyId`
+// now (previously just `schoolId` [, file]) — a school can have more than
+// one faculty member on its Faculty Profile page, so every one of these
+// calls has to say WHICH member's card it's uploading to. `facultyId` is
+// `entry.id` from AdminPanel's facultyProfiles array, sent as a plain
+// field alongside the file (uploads) or as the JSON body (deletes); the
+// backend resolves it via findFacultyIndex() in schoolController.js. Same
+// immediate-save pattern as uploadSchoolLogo / deleteSchoolLogo otherwise —
+// these hit the server directly and are not staged behind updateSchool()'s
+// "Save changes" flow.
 
 import { apiFetch } from "./http";
 
@@ -100,10 +107,20 @@ export const deleteSchoolLogo = (schoolId) =>
   apiFetch(`/api/schools/${schoolId}/logo`, { method: "DELETE", auth: true });
 
 // ── Faculty Profile photo upload (admin only) ───────────────────────────────
-// Same immediate-save pattern as the school logo above — writes to
-// school.facultyProfile.photo server-side and returns the updated school.
-export const uploadFacultyPhoto = (schoolId, file) => {
+// FIX — was missing `facultyId` entirely (just `(schoolId, file)`), which is
+// what caused "No photo file was uploaded" from the server: AdminPanel calls
+// this as uploadFacultyPhoto(schoolId, facultyId, file), so with only two
+// declared params the real `file` argument (3rd) was silently dropped and
+// this function's own `file` param was actually bound to the `facultyId`
+// string passed in 2nd position — so formData.append("photo", file) sent a
+// TEXT field, not a file part, and multer never saw a file to attach.
+//
+// `facultyId` is sent as an ordinary form field alongside the photo so the
+// backend's findFacultyIndex() knows which entry in facultyProfiles[] to
+// write the resulting URL onto.
+export const uploadFacultyPhoto = (schoolId, facultyId, file) => {
   const formData = new FormData();
+  formData.append("facultyId", facultyId);
   formData.append("photo", file);
 
   return apiFetch(`/api/schools/${schoolId}/faculty-photo`, {
@@ -113,14 +130,23 @@ export const uploadFacultyPhoto = (schoolId, file) => {
   });
 };
 
-export const deleteFacultyPhoto = (schoolId) =>
-  apiFetch(`/api/schools/${schoolId}/faculty-photo`, { method: "DELETE", auth: true });
+// FIX — same missing-facultyId issue as uploadFacultyPhoto above. No file is
+// involved here, so facultyId goes in the JSON body instead of FormData —
+// same shape deleteMediaPhoto already uses for its own row reference.
+export const deleteFacultyPhoto = (schoolId, facultyId) =>
+  apiFetch(`/api/schools/${schoolId}/faculty-photo`, {
+    method: "DELETE",
+    auth: true,
+    body: JSON.stringify({ facultyId }),
+  });
 
 // ── Faculty Profile signature image upload (admin only) ────────────────────
 // The signatory's (e.g. Managing Director's) signature shown in the card
-// footer. Same immediate-save pattern as uploadFacultyPhoto above.
-export const uploadSignaturePhoto = (schoolId, file) => {
+// footer. Same immediate-save pattern as uploadFacultyPhoto above, and the
+// same facultyId fix applies here for the same reason.
+export const uploadSignaturePhoto = (schoolId, facultyId, file) => {
   const formData = new FormData();
+  formData.append("facultyId", facultyId);
   formData.append("signature", file);
 
   return apiFetch(`/api/schools/${schoolId}/signature-photo`, {
@@ -130,5 +156,9 @@ export const uploadSignaturePhoto = (schoolId, file) => {
   });
 };
 
-export const deleteSignaturePhoto = (schoolId) =>
-  apiFetch(`/api/schools/${schoolId}/signature-photo`, { method: "DELETE", auth: true });
+export const deleteSignaturePhoto = (schoolId, facultyId) =>
+  apiFetch(`/api/schools/${schoolId}/signature-photo`, {
+    method: "DELETE",
+    auth: true,
+    body: JSON.stringify({ facultyId }),
+  });

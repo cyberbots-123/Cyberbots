@@ -57,6 +57,10 @@ const deliverableSchema = new mongoose.Schema(
 //  the frontend without a migration — an absent key is treated as "true"
 //  (opt-out model) by both AdminPanel and AEDSDashboard, so existing
 //  schools created before this field existed keep showing everything.
+//
+//  NOTE — the "facultyProfile" key here gates the whole Faculty Profile
+//  SHEET (whether it appears at all), independent of how many faculty
+//  members are on it. See `facultyProfiles` below for the data itself.
 // ────────────────────────────────────────────────────────────────────────────
 const DEFAULT_ENABLED_SECTIONS = {
   workbooks: true,
@@ -147,42 +151,30 @@ const schoolSchema = new mongoose.Schema(
     facultyObservationRows: { type: mongoose.Schema.Types.Mixed, default: [] },
     workAccomplishmentRows: { type: mongoose.Schema.Types.Mixed, default: [] },
 
-    // ── FACULTY PROFILE (NEW) — the infographic-style faculty card shown
-    // on the client dashboard's "Faculty Profile" sheet, and edited from
-    // AdminPanel's "Faculty Profile" tab. `facultyProfile` holds the
-    // scalar fields (name, title, photo, quote, contact, signatory,
-    // certification text); the five list-shaped parts of the card each
-    // get their own row array so they can reuse the same generic
-    // EditableTable the rest of the app already uses.
-    facultyProfile: {
-      type: mongoose.Schema.Types.Mixed,
-      default: {
-        name: "",
-        title: "",
-        photo: "",
-        topBadge: "CYBERBOTS CERTIFIED FACULTY",
-        bottomSeal: "CYBERBOTS CERTIFIED EXPERT FACULTY",
-        tagline: "EMPOWERING STUDENTS THROUGH ROBOTICS  •  AI  •  INNOVATION  •  SKILLS",
-        quote: "",
-        contactPhone: "",
-        contactEmail: "",
-        contactWebsite: "",
-        contactLocation: "",
-        signatoryName: "",
-        signatoryTitle: "",
-        signatoryCompany: "",
-        // Managing Director's (or whoever signs) signature image, shown in
-        // the card footer in place of the styled-text signature when set.
-        // Same "/uploads/…" server-relative-path-or-pasted-URL shape as
-        // `logo` and `photo` above.
-        signaturePhoto: "",
-      },
-    },
-    facultyStatsRows: { type: mongoose.Schema.Types.Mixed, default: [] },
-    facultyExpertiseRows: { type: mongoose.Schema.Types.Mixed, default: [] },
-    facultyTeachingRows: { type: mongoose.Schema.Types.Mixed, default: [] },
-    facultyToolsRows: { type: mongoose.Schema.Types.Mixed, default: [] },
-    facultyStrengthsRows: { type: mongoose.Schema.Types.Mixed, default: [] },
+    // ── FACULTY PROFILE (MULTI-FACULTY) — an ARRAY of faculty-member
+    // cards shown on the client dashboard's "Faculty Profile" sheet, and
+    // edited from AdminPanel's "Faculty Profile" tab. Each entry is
+    // self-contained: a stable `id` (stamped client-side, used to route
+    // photo/signature uploads to the right entry — see
+    // uploadFacultyPhoto/uploadSignaturePhoto in schoolController.js),
+    // the scalar bio/contact/certification fields (name, title, photo,
+    // quote, contact, signatory, signaturePhoto), PLUS its own five
+    // list-shaped row arrays (statsRows, expertiseRows, teachingRows,
+    // toolsRows, strengthsRows) — reusing AdminPanel's generic
+    // EditableTable per member instead of once per school.
+    //
+    // CHANGED — this used to be a single `facultyProfile` object plus five
+    // SCHOOL-LEVEL flat row arrays (facultyStatsRows / facultyExpertiseRows
+    // / facultyTeachingRows / facultyToolsRows / facultyStrengthsRows). A
+    // school can now show more than one faculty member's card. A document
+    // saved before this change still has the OLD fields sitting in Mongo
+    // (Mixed fields aren't migrated by a schema change alone) — the
+    // frontend's migrateFacultyProfile() (AdminPanel) and
+    // legacyFacultyProfileToEntry() (AEDSDashboard) convert that on read,
+    // so nothing needs to change here for existing documents to keep
+    // working. Kept as Mixed, same reasoning as every other flexible
+    // content section above.
+    facultyProfiles: { type: mongoose.Schema.Types.Mixed, default: [] },
 
     isActive: { type: Boolean, default: true },
   },

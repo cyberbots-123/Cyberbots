@@ -7,14 +7,30 @@
 // except that one component; it's bundled with the frontend like any
 // other constant.
 //
+// Grade 3 and Grades 10-12: topic + activity pairs, exactly as supplied
+// (a topic with no dedicated activity has activity: "").
 // Grades 4-9: activity names only (topic left blank) — pulled from the
 // AEDS workbook's WORKSHEETS sheet, one activity per row, in teaching
-// order. Grades 10-12: topic + activity pairs, exactly as supplied.
+// order.
 //
 // To change what's offered in the dropdown, edit this file directly —
 // there's nothing to re-seed or re-deploy beyond shipping the new file.
 
 export default {
+  "Grade 3": [
+    { order: 1, topic: "", activity: "" },
+    { order: 2, topic: "", activity: "" },
+    { order: 3, topic: "", activity: "Activity 1: Prototype – Glowing an LED" },
+    { order: 4, topic: "", activity: "Activity 2: Prototype – Interfacing a Switch with LED" },
+    { order: 5, topic: "", activity: "Activity 3: Prototype – Calling Bell" },
+    { order: 6, topic: "", activity: "Activity 4: Prototype – Disco Light" },
+    { order: 7, topic: "", activity: "Activity 5: Prototype – Burglar Alarm" },
+    { order: 8, topic: "", activity: "Activity 6: Prototype – Fuel Indicator" },
+    { order: 9, topic: "", activity: "Activity 7: Prototype – Automatic Cupboard Light" },
+    { order: 10, topic: "", activity: "Activity 8: Prototype – Land Rover" },
+    { order: 11, topic: "", activity: "Activity 9: Move the Tobi" },
+    { order: 12, topic: "", activity: "Activity 10: Birthday Party" },
+  ],
   "Grade 4": [
     { order: 1, topic: "", activity: "ACTIVITY 1- BIKE INDICATOR CIRCUIT" },
     { order: 2, topic: "", activity: "ACTIVITY 2- BLENDER MACHINE" },
