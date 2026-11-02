@@ -155,10 +155,10 @@ export const ZONE_REGISTRATION_CONFIGS = {
     color: "#1f7a6e",
     colorHi: "#6fd8c6",
     border: "rgba(31,122,110,0.3)",
-    teamSize: 1, // confirmed: single participant
-    feeModel: "per-student", // confirmed: ₹750 per participant, not a flat team fee
-    feePerStudent: 750,
-    flatFee: null,
+    teamSize: 2, // confirmed: Team of 2 — the form renders Student 1 + Student 2
+    feeModel: "flat", // confirmed: flat ₹750 for the whole team, NOT per-student
+    feePerStudent: null,
+    flatFee: 750,
     missionNote: "Prepare your A1 research poster and abstract.",
     handbookKey: "Zone3BHandbook",
     submitEndpoint: SUBMIT_ENDPOINT,

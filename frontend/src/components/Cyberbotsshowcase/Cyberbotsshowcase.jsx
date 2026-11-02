@@ -1004,7 +1004,17 @@ function Flow({ steps, color = CYAN_HI, compact = false }) {
           >
             {s.t || s}
           </div>
-          {i < steps.length - 1 && <span style={{ color, opacity: 0.6, fontSize: 15, lineHeight: 1, opacity: inView ? 1 : 0, transition: `opacity .5s ease ${i * 0.06 + 0.05}s` }}>↓</span>}
+          {i < steps.length - 1 && <span
+            style={{
+              color,
+              fontSize: 15,
+              lineHeight: 1,
+              opacity: inView ? 1 : 0,
+              transition: `opacity .5s ease ${i * 0.06 + 0.05}s`,
+            }}
+          >
+            ↓
+          </span>}
         </div>
       ))}
     </div>

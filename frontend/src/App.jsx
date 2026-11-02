@@ -8,6 +8,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home/Home";
 import Course from "./pages/Course/Course";
 import Contact from "./pages/Contact/Contact";
+import Events from "./pages/Events/Events";
 import UnderConstruction from "./components/Underconstruction/Underconstruction";
 import CyberbotsAboutBlue from "./components/Cyberbotsaboutus/Cyberbotsaboutus";
 import CyberMart from "./components/Cybermart/Cybermart";
@@ -21,7 +22,16 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 import ZoneRegister from "./pages/ZoneRegister";
 
+import useVisitTracker from "./hooks/useVisitTracker";
+
+import VisitStats from './components/VisitStats/VisitStats';
+import Cyberfest from "./pages/Events/Cyberfest";
+
 export default function App() {
+  // Fires the one-time-per-tab visit tracking call and keeps the
+  // Socket.IO connection alive for live todayCount / activeUsers updates.
+  useVisitTracker();
+
   return (
     <ThemeProvider>
       <AuthProvider>
@@ -38,6 +48,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Portal />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/portal/stats"
+              element={
+                <ProtectedRoute>
+                  <VisitStats />
                 </ProtectedRoute>
               }
             />
@@ -64,7 +82,19 @@ export default function App() {
                     <Route path="/" element={<Home />} />
                     <Route path="/courses" element={<Course />} />
                     <Route path="/shop" element={<CyberMart />} />
-                    <Route path="/events" element={<CyberBotsShowcase />} />
+
+                    {/* Events: /events is the listing page (Events.jsx) with a
+                        card for every event. Each card links to its own page
+                        below. */}
+                    <Route path="/events" element={<UnderConstruction />} />
+                    {/* Cyberflix keeps the existing page that used to live at
+                        /events. */}
+                    <Route path="/events/cyberflix" element={<CyberBotsShowcase />} />
+                    {/* Placeholders until these two event pages are built.
+                        Swap UnderConstruction for the real component later. */}
+                    <Route path="/events/cyberfest" element={<Cyberfest />} />
+                    <Route path="/events/sv-cybertron" element={<UnderConstruction />} />
+
                     <Route path="/about" element={<CyberbotsAboutBlue />} />
                     <Route path="/careers" element={<UnderConstruction />} />
                     <Route path="/blog" element={<UnderConstruction />} />

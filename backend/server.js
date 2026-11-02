@@ -42,16 +42,26 @@ if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
 
 const fs        = require("fs");
 const path      = require("path");
+const http      = require("http");
 const express   = require("express");
 const cors      = require("cors");
 const helmet    = require("helmet");
 const connectDB = require("./config/db");
 const { apiLimiter } = require("./middleware/rateLimiters");
+const { initSocket } = require("./socket");
 
 // ── Connect to MongoDB ─────────────────────────────────────────────────────
 connectDB();
 
 const app = express();
+
+// ────────────────────────────────────────────────────────────────────────────
+//  Socket.IO setup — needs a raw HTTP server wrapping the Express app.
+//  (This is why we call server.listen(...) at the bottom instead of
+//  app.listen(...) — Socket.IO attaches itself to this http.Server instance.)
+// ────────────────────────────────────────────────────────────────────────────
+const server = http.createServer(app);
+initSocket(server);
 
 // Proxy awareness — required for correct req.ip / rate-limit keying behind
 // Nginx / Heroku / Render.
@@ -158,12 +168,14 @@ const enrollmentRoutes       = require("./routes/enrollmentRoutes");
 const authRoutes             = require("./routes/authRoutes");
 const schoolRoutes           = require("./routes/schoolRoutes");
 const zoneRegistrationRoutes = require("./routes/zoneRegistrationRoutes");
+const visitRoutes            = require("./routes/visitRoutes"); // added in Step 5
 
 app.use("/api/contact", contactRoutes);
 app.use("/api/enrollment", enrollmentRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/schools", schoolRoutes);
 app.use("/api/zone-registration", zoneRegistrationRoutes);
+app.use("/api/visits", visitRoutes);
 
 // ── Health check (useful for uptime monitors & CI pipelines) ──────────────
 app.get("/api/health", (req, res) => {
@@ -197,9 +209,10 @@ app.use((err, req, res, next) => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-//  Start server
+//  Start server — server.listen (not app.listen), since Socket.IO is
+//  attached to the raw http.Server instance created above.
 // ────────────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀  Server running on http://localhost:${PORT} [${process.env.NODE_ENV || "development"}]`);
 });

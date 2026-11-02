@@ -63,10 +63,10 @@ const ZONE_RULES = {
   "3b": {
     code: "ZONE 3B",
     name: "The Next Big Idea — Venture X",
-    teamSize: 1,
-    feeModel: "per-student",
-    feePerStudent: 750,
-    flatFee: null,
+    teamSize: 2, // two-player game: both players register together
+    feeModel: "flat", // flat ₹750 for the whole team, NOT per-student
+    feePerStudent: null,
+    flatFee: 750,
     botPurchase: null,
   },
 };

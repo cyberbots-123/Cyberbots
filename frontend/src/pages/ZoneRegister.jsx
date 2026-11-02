@@ -31,7 +31,7 @@ export default function ZoneRegister() {
             onClick={() => navigate("/events")}
             style={{ padding: "10px 20px", borderRadius: 100, border: "1px solid #8fe3f2", background: "transparent", color: "#8fe3f2", cursor: "pointer" }}
           >
-            ‹ Back to CyberFlix 2K26
+            ‹ Back to CyberFest 2K26
           </button>
         </div>
       </div>
@@ -39,7 +39,7 @@ export default function ZoneRegister() {
   }
 
   // navigate(-1) sends visitors back to wherever they opened this form
-  // from (typically the CyberFlix carnival page's zone modal). If
+  // from (typically the CyberFest carnival page's zone modal). If
   // you'd rather the "Back" button always land on a fixed page instead,
   // replace this with: () => navigate("/events")
   return <ZoneRegistrationForm config={config} onBack={() => navigate(-1)} />;

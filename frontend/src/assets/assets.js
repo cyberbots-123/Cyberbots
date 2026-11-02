@@ -127,9 +127,17 @@ import ZONE2A from "./ZONE2A.pdf"
 import ZONE2B from "./ZONE2B.pdf"
 import ZONE3A from "./ZONE3A.pdf"
 import ZONE3B from "./ZONE3B.pdf"
+import Cyberfest from "./Cyberfest.png"
+import Cybertron from './Cybertron.png'
+import Mvm from "./Mvm.png"
+import Fest from "./Fest.png"
 
 
 const assets = {
+    Mvm,
+    Fest,
+    Cyberfest,
+    Cybertron,
     ZONE1A,
     ZONE1B,
     ZONE2A,
