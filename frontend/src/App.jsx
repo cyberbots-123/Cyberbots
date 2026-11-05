@@ -86,7 +86,7 @@ export default function App() {
                     {/* Events: /events is the listing page (Events.jsx) with a
                         card for every event. Each card links to its own page
                         below. */}
-                    <Route path="/events" element={<UnderConstruction />} />
+                    <Route path="/events" element={<Cyberfest />} />
                     {/* Cyberflix keeps the existing page that used to live at
                         /events. */}
                     <Route path="/events/cyberflix" element={<CyberBotsShowcase />} />

@@ -1279,7 +1279,7 @@ function ZoneCard({ z, idx, cat, onOpen }) {
 
         <div className="cf-zone-actions">
           <button type="button" className="cf-btn cf-btn-solid" onClick={() => onOpen(z)}>
-            More details <span aria-hidden="true">→</span>
+            Register Now <span aria-hidden="true">→</span>
           </button>
           <button
             type="button"
