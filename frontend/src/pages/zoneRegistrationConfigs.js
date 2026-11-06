@@ -158,7 +158,7 @@ export const ZONE_REGISTRATION_CONFIGS = {
     teamSize: 2, // confirmed: Team of 2 — the form renders Student 1 + Student 2
     feeModel: "flat", // confirmed: flat ₹750 for the whole team, NOT per-student
     feePerStudent: null,
-    flatFee: 750,
+    flatFee: 850,
     missionNote: "Prepare your A1 research poster and abstract.",
     handbookKey: "Zone3BHandbook",
     submitEndpoint: SUBMIT_ENDPOINT,

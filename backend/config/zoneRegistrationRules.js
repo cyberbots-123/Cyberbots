@@ -66,7 +66,7 @@ const ZONE_RULES = {
     teamSize: 2, // two-player game: both players register together
     feeModel: "flat", // flat ₹750 for the whole team, NOT per-student
     feePerStudent: null,
-    flatFee: 750,
+    flatFee: 850,
     botPurchase: null,
   },
 };
