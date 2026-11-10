@@ -118,7 +118,7 @@ export const ZONE_REGISTRATION_CONFIGS = {
     feePerStudent: 850, // confirmed: ₹850
     flatFee: null,
     botPurchase: {
-      price: 1799,
+      price: 1899,
       label: "Official Bot",
     },
     missionNote: "Get comfortable with the remote controller before race day.",

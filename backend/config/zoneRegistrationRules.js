@@ -49,7 +49,7 @@ const ZONE_RULES = {
     feeModel: "per-student",
     feePerStudent: 850,
     flatFee: null,
-    botPurchase: { price: 1799, label: "Official Bot" },
+    botPurchase: { price: 1899, label: "Official Bot" },
   },
   "3a": {
     code: "ZONE 3A",
